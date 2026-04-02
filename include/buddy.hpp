@@ -28,14 +28,22 @@ enum class Facing {
     Right
 };
 
+enum class MovementBurstKind {
+    None,
+    ShortShuffle,
+    LongWalk
+};
+
 struct MovementState {
     int x_position = 0;
     int direction = 1;          // -1 = left, +1 = right
     bool active = false;
 
     double move_step_timer = 0.0;
-    double state_timer = 0.0;
+    double idle_pause_timer = 0.0;
     std::size_t walk_frame_index = 0;
+    int burst_steps_remaining = 0;
+    MovementBurstKind burst_kind = MovementBurstKind::None;
 };
 
 enum class Command {
@@ -75,17 +83,26 @@ public:
     std::string mood_text() const;
 
 private:
+    void tick_action_timers(double dt_seconds);
     void update_needs(double dt_seconds);
-    void update_activity();
-    void update_expression();
-    void update_effects();
+    void resolve_activity();
+    void update_expression(double dt_seconds);
+    void update_effects(double dt_seconds);
     void update_movement(double dt_seconds);
-    void update_sparkles(double dt_seconds);
     int current_frame_width() const noexcept;
+    std::vector<std::string> select_idle_frame() const;
+    std::vector<std::string> select_walking_frame() const;
+    std::vector<std::string> select_effect_frame() const;
     int random_walk_direction();
     double random_walk_duration();
     double random_idle_duration();
     double random_time_until_next_sparkle();
+    int random_short_shuffle_steps();
+    int random_long_walk_steps();
+    bool should_start_short_shuffle();
+    bool should_turn_around_early();
+    void start_idle_pause();
+    void start_walk_burst();
     void clamp_stats();
 
 private:
@@ -119,5 +136,6 @@ private:
    static constexpr int kSparkleSequenceLength_ = 4;
    static constexpr int kWalkMinX_ = 0;
    static constexpr int kRenderInnerWidth_ = 37;
+   static constexpr double kEarlyTurnProbability_ = 0.12;
 
 };
