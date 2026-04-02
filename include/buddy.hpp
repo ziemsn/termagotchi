@@ -5,12 +5,37 @@
 #include <string>
 #include <vector>
 
-enum class Mode {
+enum class Activity {
     Idle,
-    Blinking,
-    Eating,
+    Walking,
     Sleeping,
+    Eating
+};
+
+enum class Expression {
+    Neutral,
+    Blinking,
     Sad
+};
+
+enum class Effect {
+    None,
+    Sparkle
+};
+
+enum class Facing {
+    Left,
+    Right
+};
+
+struct MovementState {
+    int x_position = 0;
+    int direction = 1;          // -1 = left, +1 = right
+    bool active = false;
+
+    double move_step_timer = 0.0;
+    double state_timer = 0.0;
+    std::size_t walk_frame_index = 0;
 };
 
 enum class Command {
@@ -37,7 +62,10 @@ public:
 
     const std::string& name() const noexcept;
     const BuddyStats& stats() const noexcept;
-    Mode mode() const noexcept;
+    Activity activity() const noexcept;
+    Expression expression() const noexcept;
+    Effect effect() const noexcept;
+    Facing facing() const noexcept;
     bool running() const noexcept;
     bool is_walking() const noexcept;
     bool is_sparkling() const noexcept;
@@ -48,7 +76,9 @@ public:
 
 private:
     void update_needs(double dt_seconds);
-    void update_mode(double dt_seconds);
+    void update_activity();
+    void update_expression();
+    void update_effects();
     void update_movement(double dt_seconds);
     void update_sparkles(double dt_seconds);
     int current_frame_width() const noexcept;
@@ -62,8 +92,12 @@ private:
    std::string name_;
    BuddyStats stats_{};
 
-   Mode mode_ = Mode::Idle;
+   Activity activity_ = Activity::Idle;
+   Expression expression_ = Expression::Neutral;
+   Effect effect_ = Effect::None;
+   Facing facing_ = Facing::Right;
    bool running_ = true;
+   bool sleeping_requested_ = false;
 
    double age_seconds_ = 0.0;
    double animation_timer_ = 0.0;
@@ -72,16 +106,11 @@ private:
    double time_until_next_sparkle_ = 0.0;
    double sparkle_animation_timer_ = 0.0;
    double action_timer_ = 0.0;
-   double move_step_timer_ = 0.0;
-   double movement_state_timer_ = 0.0;
 
    std::size_t idle_frame_index_ = 0;
-   std::size_t walk_frame_index_ = 0;
    int sparkle_frame_index_ = 0;
    int sparkle_steps_remaining_ = 0;
-   int x_position_ = 0;
-   int walk_direction_ = 1;
-   bool is_walking_ = false;
+   MovementState movement_{};
 
    std::mt19937 rng_;
 

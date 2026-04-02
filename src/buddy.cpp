@@ -5,10 +5,13 @@
 #include <random>
 
 Buddy::Buddy(std::string name) : name_(std::move(name)), rng_(std::random_device{}()) {
-    walk_direction_ = random_walk_direction();
-    is_walking_ = false;
-    movement_state_timer_ = random_idle_duration();
+    movement_.direction = random_walk_direction();
+    movement_.active = false;
+    movement_.state_timer = random_idle_duration();
     time_until_next_sparkle_ = random_time_until_next_sparkle();
+    update_activity();
+    update_expression();
+    update_effects();
 }
 
 void Buddy::update(double dt_seconds) {
@@ -37,9 +40,12 @@ void Buddy::update(double dt_seconds) {
     }
 
     update_needs(dt_seconds);
-    update_mode(dt_seconds);
+    update_activity();
+    update_expression();
     update_movement(dt_seconds);
+    update_activity();
     update_sparkles(dt_seconds);
+    update_effects();
     clamp_stats();
 }
 
@@ -48,7 +54,7 @@ void Buddy::apply_command(Command cmd) {
     case Command::Feed:
         stats_.hunger -= 20.0;
         stats_.happiness += 5.0;
-        mode_ = Mode::Eating;
+        activity_ = Activity::Eating;
         action_timer_ = 1.0;
         break;
 
@@ -57,12 +63,14 @@ void Buddy::apply_command(Command cmd) {
         break;
 
     case Command::Sleep:
-        mode_ = Mode::Sleeping;
+        sleeping_requested_ = true;
+        activity_ = Activity::Sleeping;
         break;
 
     case Command::Wake:
-        if (mode_ == Mode::Sleeping) {
-            mode_ = Mode::Idle;
+        sleeping_requested_ = false;
+        if (activity_ == Activity::Sleeping) {
+            activity_ = Activity::Idle;
         }
         break;
 
@@ -74,6 +82,9 @@ void Buddy::apply_command(Command cmd) {
         break;
 
     clamp_stats();
+    update_activity();
+    update_expression();
+    update_effects();
     }
 }
 
@@ -85,16 +96,29 @@ const BuddyStats& Buddy::stats() const noexcept {
     return stats_;
 }
 
-Mode Buddy::mode() const noexcept {
-    return mode_;
+Activity Buddy::activity() const noexcept {
+    return activity_;
 }
+
+Expression Buddy::expression() const noexcept {
+    return expression_;
+}
+
+Effect Buddy::effect() const noexcept {
+    return effect_;
+}
+
+Facing Buddy::facing() const noexcept {
+    return facing_;
+}
+
 
 bool Buddy::running() const noexcept {
     return running_;
 }
 
 bool Buddy::is_walking() const noexcept {
-    return is_walking_;
+    return movement_.active;
 }
 
 bool Buddy::is_sparkling() const noexcept {
@@ -103,13 +127,13 @@ bool Buddy::is_sparkling() const noexcept {
 
 
 int Buddy::x_position() const noexcept {
-    return x_position_;
+    return movement_.x_position;
 }
 
 std::vector<std::string> Buddy::current_frame() const {
-    const bool sparkle_active = (sparkle_steps_remaining_ > 0.0) && !is_walking_;
+    const bool sparkle_active = (sparkle_steps_remaining_ > 0.0) && !movement_.active;
 
-    if (sparkle_active) {
+    if (effect_ == Effect::Sparkle) {
         switch (sparkle_frame_index_) {
             case 0:
                 return sprites::sparkle_0;
@@ -122,53 +146,51 @@ std::vector<std::string> Buddy::current_frame() const {
         }
     }
 
-    switch (mode_) {
-    case Mode::Eating:
+    switch (activity_) {
+    case Activity::Eating:
         return sprites::eat;
-    case Mode::Sleeping:
+    case Activity::Sleeping:
         return sprites::sleep;
-    case Mode::Blinking:
-        if (is_walking_) {
-            return (walk_frame_index_ == 0) ? sprites::walk_0_blink : sprites::walk_1_blink;
+    case Activity::Walking:
+        if (expression_ == Expression::Blinking) {
+            return (movement_.walk_frame_index == 0) ? sprites::walk_0_blink : sprites::walk_1_blink;
         }
-        if (sparkle_active) {
-            return sprites::blink_sparkle;
+        if (expression_ == Expression::Sad) {
+            return (movement_.walk_frame_index == 0) ? sprites::walk_0 : sprites::walk_1;
         }
-        return sprites::blink;
-    case Mode::Sad:
-        if (is_walking_) {
-            return (walk_frame_index_ == 0) ? sprites::walk_0_blink : sprites::walk_1_blink;
-        }
-        return sprites::sad;
-    case Mode::Idle:
+        return (movement_.walk_frame_index == 0) ? sprites::walk_0 : sprites::walk_1; 
+    case Activity::Idle:
     default:
-        if (is_walking_) {
-            return (walk_frame_index_ == 0) ? sprites::walk_0 : sprites::walk_1;
+        if (expression_ == Expression::Sad) {
+            return sprites::sad;
+        }
+        if (expression_ == Expression::Blinking) {
+            return sprites::blink;
         }
         return (idle_frame_index_ == 0) ? sprites::idle_0 : sprites::idle_1;
     }
 }
 
 std::string Buddy::mood_text() const {
-    if (mode_ == Mode::Sleeping) {
+    if (activity_ == Activity::Sleeping) {
         return "Sleeping";
     }
-    if (mode_ == Mode::Eating) {
+    if (activity_ == Activity::Eating) {
         return "Eating";
     }
-    if (mode_ == Mode::Sad) {
+    if (expression_ == Expression::Sad) {
         return "Sad";
     }
-    if (!is_walking_ && sparkle_steps_remaining_ > 0) {
+    if (effect_ == Effect::Sparkle) {
         return "Sparkling";
     }
-    if (is_walking_ && mode_ == Mode::Blinking) {
+    if (activity_ == Activity::Walking && expression_ == Expression::Blinking) {
         return "Walking, blinking";
     }
-    if (is_walking_) {
+    if (activity_ == Activity::Walking) {
         return "Walking";
     }
-    if (mode_ == Mode::Blinking) {
+    if (expression_ == Expression::Blinking) {
         return "Blinking";
     }
     return "Idle";
@@ -177,10 +199,10 @@ std::string Buddy::mood_text() const {
 void Buddy::update_needs(double dt_seconds) {
     stats_.hunger += 0.05 * dt_seconds;
 
-    if (mode_ == Mode::Sleeping) {
-        stats_.energy += 12.0 * dt_seconds;
+    if (activity_ == Activity::Sleeping) {
+        stats_.energy += 6.0 * dt_seconds;
     } else {
-        stats_.energy -= 0.02 * dt_seconds;
+        stats_.energy -= 0.2 * dt_seconds;
     }
 
     if (stats_.hunger > 70.0) {
@@ -188,41 +210,38 @@ void Buddy::update_needs(double dt_seconds) {
     }
 }
 
-void Buddy::update_mode(double dt_seconds) {
-    (void)dt_seconds;
+void Buddy::update_activity() {
 
-    if (mode_ == Mode::Sleeping) {
-        if (stats_.energy >= 95.0) {
-            mode_ = Mode::Idle;
-        }
-        return;
+    if (activity_ == Activity::Sleeping && stats_.energy >= 85.0) {
+        sleeping_requested_ = false;
     }
 
-    if (mode_ == Mode::Eating) {
-        if (action_timer_ <= 0.0) {
-            mode_ = Mode::Idle;
-        }
-        return;
+    if (action_timer_ > 0.0) {
+        activity_ = Activity::Eating;
+    } else if (sleeping_requested_ || stats_.energy < 15.0) {
+        activity_ = Activity::Sleeping;
+    } else if (movement_.active) {
+        activity_ = Activity::Walking;
+    } else {
+        activity_ = Activity::Idle;
     }
 
-    if (stats_.hunger > 85.0 || stats_.happiness < 20.0) {
-        mode_ = Mode::Sad;
-        return;
-    }
+}
 
-    if (blink_duration_remaining_ > 0.0) {
-        mode_ = Mode::Blinking;
-        return;
-    }
-
-    if (time_until_next_blink_ <= 0.0) {
-        blink_duration_remaining_ = 0.25;
+void Buddy::update_expression() {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating) {
+        expression_ = Expression::Neutral;
+    } else if (stats_.hunger > 85.0 || stats_.happiness < 20.0) {
+        expression_ = Expression::Sad;
+    } else if (blink_duration_remaining_ > 0.0) {
+        expression_ = Expression::Blinking;
+    } else if (time_until_next_blink_ <= 0.0) {
+        blink_duration_remaining_ = 0.15;
         time_until_next_blink_ = 4.0;
-        mode_ = Mode::Blinking;
-        return;
+        expression_ = Expression::Blinking;
+    } else {
+        expression_ = Expression::Neutral;
     }
-
-    mode_ = Mode::Idle;
 
     if (animation_timer_ >= 0.4) {
         animation_timer_ = 0.0;
@@ -230,52 +249,57 @@ void Buddy::update_mode(double dt_seconds) {
     }
 }
 
+void Buddy::update_effects() {
+    effect_ = (sparkle_steps_remaining_ > 0) ? Effect::Sparkle : Effect::None;
+}
+        
+
 void Buddy::update_movement(double dt_seconds) {
-    if (mode_ == Mode::Sleeping || mode_ == Mode::Eating) {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating) {
         return;
     }
 
-    movement_state_timer_ -= dt_seconds;
-    if (movement_state_timer_ <= 0.0) {
-        if (is_walking_) {
-            is_walking_ = false;
-            walk_frame_index_ = 0;
-            movement_state_timer_ = random_idle_duration();
+    movement_.state_timer -= dt_seconds;
+    if (movement_.state_timer <= 0.0) {
+        if (movement_.active) {
+            movement_.active = false;
+            movement_.walk_frame_index = 0;
+            movement_.state_timer = random_idle_duration();
         } else {
-            is_walking_ = true;
-            walk_direction_ = random_walk_direction();
-            walk_frame_index_ = 0;
-            move_step_timer_ = 0.0;
-            movement_state_timer_ = random_walk_duration();
+            movement_.active = true;
+            movement_.direction = random_walk_direction();
+            movement_.walk_frame_index = 0;
+            movement_.move_step_timer = 0.0;
+            movement_.state_timer = random_walk_duration();
         }
     }
 
-    if (!is_walking_) {
+    if (!movement_.active) {
         return;
     }
 
     const int sprite_width = current_frame_width();
     const int walk_max_x = std::max(kWalkMinX_, kRenderInnerWidth_ - sprite_width);
 
-    move_step_timer_ += dt_seconds;
+    movement_.move_step_timer += dt_seconds;
 
-    while (move_step_timer_ >= kMoveStepInterval_) {
-        move_step_timer_ -= kMoveStepInterval_;
-        x_position_ += walk_direction_;
-        walk_frame_index_ = (walk_frame_index_ + 1) % 2;
+    while (movement_.move_step_timer >= kMoveStepInterval_) {
+        movement_.move_step_timer -= kMoveStepInterval_;
+        movement_.x_position += movement_.direction;
+        movement_.walk_frame_index = (movement_.walk_frame_index + 1) % 2;
 
-        if (x_position_ >= walk_max_x) {
-            x_position_ = walk_max_x;
-            walk_direction_ = -1;
-        } else if (x_position_ <= kWalkMinX_) {
-            x_position_ = kWalkMinX_;
-            walk_direction_ = 1;
+        if (movement_.x_position >= walk_max_x) {
+            movement_.x_position = walk_max_x;
+            movement_.direction = -1;
+        } else if (movement_.x_position <= kWalkMinX_) {
+            movement_.x_position = kWalkMinX_;
+            movement_.direction = 1;
         }
     }
 }
 
 void Buddy::update_sparkles(double dt_seconds) {
-    if (mode_ == Mode::Sleeping || mode_ == Mode::Eating || is_walking_) {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking) {
         sparkle_steps_remaining_ = 0;
         sparkle_animation_timer_ = 0.0;
         return;
