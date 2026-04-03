@@ -59,6 +59,50 @@ SpriteLayerRole classify_legacy_cell(const AppearanceState& appearance, std::siz
     return SpriteLayerRole::Body;
 }
 
+ComposedSprite make_blank_sprite_like(const ComposedSprite& source) {
+    ComposedSprite blank;
+    blank.rows.reserve(source.rows.size());
+
+    for (const auto& source_row : source.rows) {
+        SpriteRow blank_row;
+        blank_row.resize(source_row.size());
+        blank.rows.push_back(std::move(blank_row));
+    }
+
+    return blank;
+}
+
+ComposedSprite extract_role_layer(const ComposedSprite& source, SpriteLayerRole role) {
+    ComposedSprite layer = make_blank_sprite_like(source);
+
+    for (std::size_t row = 0; row < source.rows.size(); ++row) {
+        for (std::size_t col = 0; col < source.rows[row].size(); ++col) {
+            const SpriteCell& cell = source.rows[row][col];
+            if (cell.role == role) {
+                layer.rows[row][col] = cell;
+            }
+        }
+    }
+    
+    return layer;
+}
+
+void overlay_composed_sprite(ComposedSprite& destination, const ComposedSprite& source) {
+    const std::size_t row_count = std::min(destination.rows.size(), source.rows.size());
+
+    for (std::size_t row = 0; row < row_count; ++row) {
+        const std::size_t col_count = std::min(destination.rows[row].size(), source.rows[row].size());
+
+        for (std::size_t col = 0; col < col_count; ++col) {
+            const SpriteCell& source_cell = source.rows[row][col];
+            if (source_cell.glyph == ' ' || source_cell.role == SpriteLayerRole::None) {
+                continue;
+            }
+
+            destination.rows[row][col] = source_cell;
+        }
+    }
+}
 
 } // namespace
 
@@ -210,7 +254,24 @@ PoseState Buddy::make_pose_state(const AppearanceState& appearance) const noexce
 }
 
 ComposedSprite Buddy::compose_sprite(const PoseState& pose) const {
-    return compose_legacy_sprite(pose.appearance);
+    const ComposedSprite legacy = compose_legacy_sprite(pose.appearance);
+    ComposedSprite composed = make_blank_sprite_like(legacy);
+
+    const ComposedSprite body_layer = extract_role_layer(legacy, SpriteLayerRole::Body);
+    const ComposedSprite cap_layer = extract_role_layer(legacy, SpriteLayerRole::Cap);
+    const ComposedSprite eye_layer = extract_role_layer(legacy, SpriteLayerRole::Eyes);
+    const ComposedSprite feet_layer = extract_role_layer(legacy, SpriteLayerRole::Feed);
+    const ComposedSprite effect_layer = extract_role_layer(legacy, SpriteLayerRole::Effect);
+
+    overlay_composed_sprite(composed, body_layer);
+    overlay_composed_sprite(composed, cap_layer);
+    overlay_composed_sprite(composed, eye_layer);
+    if (pose.has_feet) {
+        overlay_composed_sprite(composed, feet_layer);
+    }
+    overlay_composed_sprite(composed, effect_layer);
+
+    return composed;
 }
 
 ComposedSprite Buddy::compose_legacy_sprite(const AppearanceState& appearance) const {

@@ -19,6 +19,8 @@ constexpr const char* red     = "\033[31m";
 constexpr const char* green   = "\033[32m";
 constexpr const char* cyan    = "\033[36m";
 constexpr const char* magenta = "\033[35m";
+constexpr const char* blue    = "\033[34m";
+constexpr const char* white   = "\033[37m";
 } // namespace ansi
 
 std::string fit_text(const std::string& text, int width = kInnerWidth) {
@@ -51,25 +53,101 @@ void overlay_text(std::string& row, const std::string& text, int x_offset) {
     }
 }
 
-std::vector<std::string> build_stage(const BuddyRenderState& buddy) {
-    std::vector<std::string> stage(static_cast<std::size_t>(kStageHeight), 
-            std::string(static_cast<std::size_t>(kInnerWidth), ' '));
+using StageRow = std::vector<SpriteCell>;
+const char* cap_color(const BuddyRenderState& buddy) {
+    if (buddy.appearance.activity == Activity::Sleeping) {
+        return ansi::cyan;
+    }
+    if (buddy.appearance.activity == Activity::Sleeping) {
+        return ansi::green;
+    }
+    if (buddy.appearance.activity == Activity::Walking || buddy.appearance.movement_phase == MovementPhase::WallPause) {
+        return ansi::yellow;
+    }
+    return ansi::reset;
+}
+
+const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& cell) {
+    if (cell.glyph == ' ') {
+        return ansi::reset;
+    }
+
+    if (cell.role == SpriteLayerRole::Effect) {
+        return ansi::magenta;
+    }
+    if (cell.role == SpriteLayerRole::Cap) {
+        return cap_color(buddy);
+    }
+    if (cell.role == SpriteLayerRole::Eyes) {
+        return ansi::white;
+    }
+    if (cell.glyph == '_') {
+        return ansi::green;
+    }
+
+    return ansi::reset;
+}
+
+void overlay_sprite(StageRow& stage_row, const SpriteRow& sprite_row, int x_offset) {
+    for (std::size_t i = 0; i < sprite_row.size(); ++i) {
+        const int col = x_offset + static_cast<int>(i);
+        if (col < 0 || col >= static_cast<int>(stage_row.size())) {
+            continue;
+        }
+        const SpriteCell& sprite_cell = sprite_row[i];
+        if (sprite_cell.glyph == ' ') {
+            continue;
+        }
+
+        stage_row[static_cast<std::size_t>(col)] = sprite_cell;
+    }
+}
+
+std::vector<StageRow> build_stage(const BuddyRenderState& buddy) {
+    std::vector<StageRow> stage(
+            static_cast<std::size_t>(kStageHeight),
+            StageRow(static_cast<std::size_t>(kInnerWidth), SpriteCell{}));
 
     const int ground_row = kStageHeight - 1;
-    stage[static_cast<std::size_t>(ground_row)] = std::string(static_cast<std::size_t>(kInnerWidth), '_');
+    for (auto& cell : stage[static_cast<std::size_t>(ground_row)]) {
+        cell.glyph = '_';
+        cell.role = SpriteLayerRole::None;
+    }
 
     const int sprite_left = buddy.x_position;
-    const int sprite_top = std::max(0, ground_row - static_cast<int>(buddy.frame.size()));
+    const int sprite_top = std::max(0, ground_row - static_cast<int>(buddy.sprite.rows.size()));
 
-    for (std::size_t row_index = 0; row_index < buddy.frame.size(); ++row_index) {
+    for (std::size_t row_index = 0; row_index < buddy.sprite.rows.size(); ++row_index) {
         const int stage_row = sprite_top + static_cast<int>(row_index);
         if (stage_row < 0 || stage_row >= ground_row) {
             continue;
         }
-        overlay_text(stage[static_cast<std::size_t>(stage_row)], buddy.frame[row_index], sprite_left);
+        overlay_sprite(stage[static_cast<std::size_t>(stage_row)], buddy.sprite.rows[row_index], sprite_left);
     }
 
     return stage;
+}
+
+void framed_stage_row(const StageRow& row, const BuddyRenderState& buddy) {
+    std::cout << "| ";
+
+    const char* active_color = ansi::reset;
+    std::cout << active_color;
+
+    for (const auto& cell : row) {
+        const char* next_color = sprite_cell_color(buddy, cell);
+        if (next_color != active_color){
+            std::cout << next_color;
+            active_color = next_color;
+        }
+        std::cout << cell.glyph;
+    }
+
+    if (active_color != ansi::reset) {
+        std::cout << ansi::reset;
+    }
+
+    std::cout << " |\n";
 }
 
 const char* stat_color_hunger(double hunger) {
@@ -144,11 +222,7 @@ void draw(const BuddyRenderState& buddy,const std::string& input_buffer) {
     framed_line(divider);
 
     for (const auto& row : stage) {
-        if (row.find_first_not_of('_') == std::string::npos) {
-            framed_line_colored(row, ansi::green);
-        } else {
-            framed_line(row);
-        }
+        framed_stage_row(row, buddy);
     }
 
     framed_line_colored(divider, ansi::dim);
