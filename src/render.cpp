@@ -19,8 +19,6 @@ constexpr const char* red     = "\033[31m";
 constexpr const char* green   = "\033[32m";
 constexpr const char* cyan    = "\033[36m";
 constexpr const char* magenta = "\033[35m";
-constexpr const char* blue    = "\033[34m";
-constexpr const char* white   = "\033[37m";
 } // namespace ansi
 
 std::string fit_text(const std::string& text, int width = kInnerWidth) {
@@ -54,15 +52,25 @@ void overlay_text(std::string& row, const std::string& text, int x_offset) {
 }
 
 using StageRow = std::vector<SpriteCell>;
-const char* cap_color(const BuddyRenderState& buddy) {
+
+const char* state_accent_color(const BuddyRenderState& buddy) {
+    if (buddy.appearance.effect == Effect::Sparkle) {
+        return ansi::magenta;
+    }
     if (buddy.appearance.activity == Activity::Sleeping) {
         return ansi::cyan;
     }
-    if (buddy.appearance.activity == Activity::Sleeping) {
+    if (buddy.appearance.activity == Activity::Eating) {
         return ansi::green;
     }
-    if (buddy.appearance.activity == Activity::Walking || buddy.appearance.movement_phase == MovementPhase::WallPause) {
-        return ansi::yellow;
+    if (buddy.appearance.expression == Expression::Sad) {
+        return ansi::red;
+    }
+    if (buddy.appearance.expression == Expression::Blinking) {
+        return ansi::cyan;
+    }
+    if (buddy.appearance.activity == Activity::Walking) {
+        return ansi::green;
     }
     return ansi::reset;
 }
@@ -76,16 +84,19 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
         return ansi::magenta;
     }
     if (cell.role == SpriteLayerRole::Cap) {
-        return cap_color(buddy);
+        return state_accent_color(buddy);
     }
     if (cell.role == SpriteLayerRole::Eyes) {
-        return ansi::white;
+        return ansi::reset;
     }
-    if (cell.glyph == '_') {
+    if (cell.role == SpriteLayerRole::Body) {
+        return ansi::yellow;
+    }
+    if (cell.role == SpriteLayerRole::None && cell.glyph == '_') {
         return ansi::green;
     }
 
-    return ansi::reset;
+    return ansi::yellow;
 }
 
 void overlay_sprite(StageRow& stage_row, const SpriteRow& sprite_row, int x_offset) {
@@ -169,25 +180,7 @@ const char* stat_color_happiness(double happiness) {
 }
 
 const char* mood_color(const BuddyRenderState& buddy) {
-    if (buddy.appearance.effect == Effect::Sparkle) {
-        return ansi::magenta;
-    }
-    if (buddy.appearance.activity == Activity::Sleeping) {
-        return ansi::cyan;
-    }
-    if (buddy.appearance.activity == Activity::Eating) {
-        return ansi::green;
-    }
-    if (buddy.appearance.expression == Expression::Sad) {
-        return ansi::red;
-    }
-    if (buddy.appearance.expression == Expression::Blinking) {
-        return ansi::cyan;
-    }
-    if (buddy.appearance.activity == Activity::Walking) {
-        return ansi::green;
-    }
-    return ansi::reset;
+    return state_accent_color(buddy);
 }
 
 } // namespace

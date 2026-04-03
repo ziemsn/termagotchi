@@ -59,7 +59,7 @@ enum class SpriteLayerRole {
     Cap,
     Eyes,
     Body,
-    Feed,
+    Feet,
     Effect
 };
 

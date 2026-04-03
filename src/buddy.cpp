@@ -18,16 +18,20 @@ std::string make_stat_line(const std::string& label, double value) {
     return label + make_bar(value);
 }
 
-int legacy_cap_row(const AppearanceState& appearance) {
+int legacy_top_start_row(const AppearanceState& appearance) {
     if (appearance.effect == Effect::Sparkle) {
         return 2;
     }
 
-    if (appearance.activity == Activity::Walking | appearance.movement_phase == MovementPhase::WallPause) {
+    if (appearance.activity == Activity::Walking || appearance.movement_phase == MovementPhase::WallPause) {
         return 1;
     }
 
     return 2;
+}
+
+int legacy_top_end_row(const AppearanceState& appearance) {
+    return legacy_top_start_row(appearance) + 1;
 }
 
 int legacy_eye_row(const AppearanceState& appearance) {
@@ -35,7 +39,7 @@ int legacy_eye_row(const AppearanceState& appearance) {
         return 4;
     }
     
-    if (appearance.activity == Activity::Walking | appearance.movement_phase == MovementPhase::WallPause) {
+    if (appearance.activity == Activity::Walking || appearance.movement_phase == MovementPhase::WallPause) {
         return 3;
     }
 
@@ -43,7 +47,7 @@ int legacy_eye_row(const AppearanceState& appearance) {
 }
 
 int legacy_feet_row(const AppearanceState& appearance) {
-    if (appearance.activity == Activity::Walking | appearance.movement_phase == MovementPhase::WallPause) {
+    if (appearance.activity == Activity::Walking || appearance.movement_phase == MovementPhase::WallPause) {
         return 6;
     }
 
@@ -53,9 +57,12 @@ int legacy_feet_row(const AppearanceState& appearance) {
 SpriteLayerRole classify_legacy_cell(const AppearanceState& appearance, std::size_t row, char glyph) {
     if (glyph == ' ') return SpriteLayerRole::None;
     if (appearance.effect == Effect::Sparkle && row < 2 && (glyph == '*' || glyph == '+' || glyph == '.')) return SpriteLayerRole::Effect;
-    if (static_cast<int>(row) == legacy_feet_row(appearance) && (glyph == '/' || glyph == '\\')) return SpriteLayerRole::Feed;
+    if (static_cast<int>(row) == legacy_feet_row(appearance) && (glyph == '/' || glyph == '\\')) return SpriteLayerRole::Feet;
     if (static_cast<int>(row) == legacy_eye_row(appearance) && (glyph == 'o' || glyph == 'O' || glyph == '-')) return SpriteLayerRole::Eyes;
-    if (static_cast<int>(row) == legacy_cap_row(appearance)) return SpriteLayerRole::Cap;
+    if (static_cast<int>(row) >= legacy_top_start_row(appearance) &&
+            static_cast<int>(row) <= legacy_top_end_row(appearance)) {
+        return SpriteLayerRole::Cap;
+    }
     return SpriteLayerRole::Body;
 }
 
@@ -260,7 +267,7 @@ ComposedSprite Buddy::compose_sprite(const PoseState& pose) const {
     const ComposedSprite body_layer = extract_role_layer(legacy, SpriteLayerRole::Body);
     const ComposedSprite cap_layer = extract_role_layer(legacy, SpriteLayerRole::Cap);
     const ComposedSprite eye_layer = extract_role_layer(legacy, SpriteLayerRole::Eyes);
-    const ComposedSprite feet_layer = extract_role_layer(legacy, SpriteLayerRole::Feed);
+    const ComposedSprite feet_layer = extract_role_layer(legacy, SpriteLayerRole::Feet);
     const ComposedSprite effect_layer = extract_role_layer(legacy, SpriteLayerRole::Effect);
 
     overlay_composed_sprite(composed, body_layer);
