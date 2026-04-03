@@ -6,7 +6,7 @@
 
 Buddy::Buddy(std::string name) : name_(std::move(name)), rng_(std::random_device{}()) {
     movement_.direction = random_walk_direction();
-    movement_.active = false;
+    movement_.phase = MovementPhase::IdlePause;
     start_idle_pause();
     time_until_next_sparkle_ = random_time_until_next_sparkle();
     resolve_activity();
@@ -98,7 +98,7 @@ bool Buddy::running() const noexcept {
 }
 
 bool Buddy::is_walking() const noexcept {
-    return movement_.active;
+    return movement_.phase == MovementPhase::WalkingBurst;
 }
 
 bool Buddy::is_sparkling() const noexcept {
@@ -112,6 +112,14 @@ int Buddy::x_position() const noexcept {
 std::vector<std::string> Buddy::current_frame() const {
     if (effect_ == Effect::Sparkle) {
         return select_effect_frame();
+    }
+
+    return current_body_frame();
+}
+
+std::vector<std::string> Buddy::current_body_frame() const {
+    if (movement_.phase == MovementPhase::WallPause) {
+        return select_wall_pause_frame();
     }
 
     switch (activity_) {
@@ -145,6 +153,14 @@ std::vector<std::string> Buddy::select_walking_frame() const {
     return (movement_.walk_frame_index == 0) ? sprites::walk_0 : sprites::walk_1;
 }
 
+std::vector<std::string> Buddy::select_wall_pause_frame() const {
+    if (expression_ == Expression::Blinking) {
+        return sprites::walk_0_blink;
+    }
+
+    return sprites::walk_0;
+}
+
 std::vector<std::string> Buddy::select_effect_frame() const {
     switch (sparkle_frame_index_) {
     case 0:
@@ -167,6 +183,9 @@ std::string Buddy::mood_text() const {
     }
     if (expression_ == Expression::Sad) {
         return "Sad";
+    }
+    if (movement_.phase == MovementPhase::WallPause) {
+        return "Pausing";
     }
     if (effect_ == Effect::Sparkle) {
         return "Sparkling";
@@ -228,7 +247,7 @@ void Buddy::resolve_activity() {
         activity_ = Activity::Eating;
     } else if (should_auto_sleep) {
         activity_ = Activity::Sleeping;
-    } else if (movement_.active) {
+    } else if (movement_.phase == MovementPhase::WalkingBurst) {
         activity_ = Activity::Walking;
     } else {
         activity_ = Activity::Idle;
@@ -276,22 +295,33 @@ void Buddy::update_movement(double dt_seconds) {
         return;
     }
 
-    const int sprite_width = current_frame_width();
+    const int sprite_width = body_frame_width();
     const int walk_max_x = std::max(kWalkMinX_, kRenderInnerWidth_ - sprite_width);
 
-    if (!movement_.active) {
-        movement_.idle_pause_timer -= dt_seconds;
-        if (movement_.idle_pause_timer <= 0.0) {
+    if (movement_.phase == MovementPhase::IdlePause) {
+        movement_.phase_timer -= dt_seconds;
+        if (movement_.phase_timer <= 0.0) {
             start_walk_burst();
+        } else {
+            return;
+        }
+    } else if (movement_.phase == MovementPhase::WallPause) {
+        movement_.phase_timer -= dt_seconds;
+        if (movement_.phase_timer <= 0.0) {
+            if (movement_.burst_steps_remaining > 0) {
+                movement_.phase = MovementPhase::WalkingBurst;
+                movement_.move_step_timer = 0.0;
+            } else {
+                start_idle_pause();
+            }
         } else {
             return;
         }
     }
 
-
     movement_.move_step_timer += dt_seconds;
 
-    while (movement_.active && movement_.burst_steps_remaining > 0 && movement_.move_step_timer >= kMoveStepInterval_) {
+    while (movement_.phase == MovementPhase::WalkingBurst && movement_.burst_steps_remaining > 0 && movement_.move_step_timer >= kMoveStepInterval_) {
         movement_.move_step_timer -= kMoveStepInterval_;
 
         if (movement_.burst_kind == MovementBurstKind::LongWalk &&
@@ -310,20 +340,33 @@ void Buddy::update_movement(double dt_seconds) {
             movement_.x_position = walk_max_x;
             movement_.direction = -1;
             facing_ = Facing::Left;
+            if (movement_.burst_steps_remaining > 0) {
+                start_wall_pause();
+            } else {
+                start_idle_pause();
+            }
+            break;
         } else if (movement_.x_position <= kWalkMinX_) {
             movement_.x_position = kWalkMinX_;
             movement_.direction = 1;
             facing_ = Facing::Right;
+            if (movement_.burst_steps_remaining > 0) {
+                start_wall_pause();
+            } else {
+                start_idle_pause();
+            }
+            break;
         }
 
         if (movement_.burst_steps_remaining <= 0) {
             start_idle_pause();
+            break;
         }
     }
 }
 
 void Buddy::update_effects(double dt_seconds) {
-    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking) {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking || movement_.phase == MovementPhase::WallPause) {
         sparkle_steps_remaining_ = 0;
         sparkle_animation_timer_ = 0.0;
         effect_ = Effect::None;
@@ -359,8 +402,11 @@ void Buddy::update_effects(double dt_seconds) {
     }
 }
 
-int Buddy::current_frame_width() const noexcept {
-    const auto frame = current_frame();
+int Buddy::body_frame_width() const noexcept {
+    return frame_width(current_body_frame());
+}
+
+int Buddy::frame_width(const std::vector<std::string>& frame) const noexcept {
     int max_width = 0;
 
     for (const auto& row : frame) {
@@ -378,13 +424,13 @@ int Buddy::random_walk_direction() {
     return dir_dist(rng_) == 0 ? -1 : 1;
 }
 
-/* double Buddy::random_walk_duration() { */
-/*     std::uniform_real_distribution<double> duration_dist(2.0, 4.0); */
-/*     return duration_dist(rng_); */
-/* } */
-
 double Buddy::random_idle_duration() {
     std::uniform_real_distribution<double> duration_dist(2.0, 4.0);
+    return duration_dist(rng_);
+}
+
+double Buddy::random_wall_pause_duration() {
+    std::uniform_real_distribution<double> duration_dist(0.50, 0.75);
     return duration_dist(rng_);
 }
 
@@ -394,16 +440,16 @@ double Buddy::random_time_until_next_sparkle() {
 }
 
 int Buddy::random_short_shuffle_steps() {
-    std::uniform_int_distribution<int> step_dist(3, 5);
+    std::uniform_int_distribution<int> step_dist(3, 7);
     return step_dist(rng_);
 }
 int Buddy::random_long_walk_steps() {
-    std::uniform_int_distribution<int> step_dist(6, 12);
+    std::uniform_int_distribution<int> step_dist(8, 20);
     return step_dist(rng_);
 }
 
 bool Buddy::should_start_short_shuffle() {
-    std::bernoulli_distribution dist(0.35);
+    std::bernoulli_distribution dist(kShouldStartShortShuffle_);
     return dist(rng_);
 }
 
@@ -413,23 +459,31 @@ bool Buddy::should_turn_around_early() {
 }
 
 void Buddy::start_idle_pause() {
-    movement_.active = false;
+    movement_.phase = MovementPhase::IdlePause;
     movement_.burst_kind = MovementBurstKind::None;
     movement_.burst_steps_remaining = 0;
     movement_.walk_frame_index = 0;
     movement_.move_step_timer = 0.0;
-    movement_.idle_pause_timer = random_idle_duration();
+    movement_.phase_timer = random_idle_duration();
+}
+
+void Buddy::start_wall_pause() {
+    movement_.phase = MovementPhase::WallPause;
+    movement_.phase_timer = random_wall_pause_duration();
+    movement_.move_step_timer = 0.0;
+    movement_.walk_frame_index =  0;
 }
 
 void Buddy::start_walk_burst() {
-    movement_.active = true;
+    movement_.phase = MovementPhase::WalkingBurst;
+    movement_.phase_timer = 0.0;
     movement_.move_step_timer = 0.0;
     movement_.walk_frame_index = 0;
 
     if (movement_.x_position <= kWalkMinX_) {
         movement_.direction = 1;
     } else {
-        const int sprite_width = current_frame_width();
+        const int sprite_width = body_frame_width();
         const int walk_max_x = std::max(kWalkMinX_, kRenderInnerWidth_ - sprite_width);
         if (movement_.x_position >= walk_max_x) {
             movement_.direction = -1;

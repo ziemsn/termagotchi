@@ -34,13 +34,19 @@ enum class MovementBurstKind {
     LongWalk
 };
 
+enum class MovementPhase {
+    IdlePause,
+    WalkingBurst,
+    WallPause
+};
+
 struct MovementState {
     int x_position = 0;
     int direction = 1;          // -1 = left, +1 = right
-    bool active = false;
+    MovementPhase phase = MovementPhase::IdlePause;
 
     double move_step_timer = 0.0;
-    double idle_pause_timer = 0.0;
+    double phase_timer = 0.0;
     std::size_t walk_frame_index = 0;
     int burst_steps_remaining = 0;
     MovementBurstKind burst_kind = MovementBurstKind::None;
@@ -89,13 +95,16 @@ private:
     void update_expression(double dt_seconds);
     void update_effects(double dt_seconds);
     void update_movement(double dt_seconds);
-    int current_frame_width() const noexcept;
+    int body_frame_width() const noexcept;
+    int frame_width(const std::vector<std::string>& frame) const noexcept;
+    std::vector<std::string> current_body_frame() const;
     std::vector<std::string> select_idle_frame() const;
     std::vector<std::string> select_walking_frame() const;
+    std::vector<std::string> select_wall_pause_frame() const;
     std::vector<std::string> select_effect_frame() const;
     int random_walk_direction();
-    double random_walk_duration();
     double random_idle_duration();
+    double random_wall_pause_duration();
     double random_time_until_next_sparkle();
     int random_short_shuffle_steps();
     int random_long_walk_steps();
@@ -103,6 +112,7 @@ private:
     bool should_turn_around_early();
     void start_idle_pause();
     void start_walk_burst();
+    void start_wall_pause();
     void clamp_stats();
 
 private:
@@ -136,7 +146,8 @@ private:
    static constexpr int kSparkleSequenceLength_ = 4;
    static constexpr int kWalkMinX_ = 0;
    static constexpr int kRenderInnerWidth_ = 37;
-   static constexpr double kEarlyTurnProbability_ = 0.12;
+   static constexpr double kEarlyTurnProbability_ = 0.10;
+   static constexpr double kShouldStartShortShuffle_ = 0.4;
    static constexpr double kAutoEatHungerThreshold_ = 80.0;
    static constexpr double kAutoEatHungerReduction_ = 20.0;
    static constexpr double kAutoEatHappinessBoost_ = 5.0;
