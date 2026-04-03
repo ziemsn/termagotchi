@@ -8,10 +8,12 @@ Buddy::Buddy(std::string name) : name_(std::move(name)), rng_(std::random_device
     movement_.direction = random_walk_direction();
     movement_.phase = MovementPhase::IdlePause;
     start_idle_pause();
+    time_until_next_look_ = random_time_until_next_look();
     time_until_next_sparkle_ = random_time_until_next_sparkle();
     resolve_activity();
     update_expression(0.0);
     update_effects(0.0);
+    update_micro_appearance(0.0);
 }
 
 void Buddy::update(double dt_seconds) {
@@ -25,6 +27,7 @@ void Buddy::update(double dt_seconds) {
     update_movement(dt_seconds);
     resolve_activity();
     update_effects(dt_seconds);
+    update_micro_appearance(dt_seconds);
     clamp_stats();
 }
 
@@ -66,6 +69,7 @@ void Buddy::apply_command(Command cmd) {
     resolve_activity();
     update_expression(0.0);
     update_effects(0.0);
+    update_micro_appearance(0.0);
 }
 
 const std::string& Buddy::name() const noexcept {
@@ -110,59 +114,94 @@ int Buddy::x_position() const noexcept {
 }
 
 std::vector<std::string> Buddy::current_frame() const {
-    if (effect_ == Effect::Sparkle) {
-        return select_effect_frame();
-    }
-
-    return current_body_frame();
+    return resolve_appearance_frame(make_appearance_state());
 }
 
-std::vector<std::string> Buddy::current_body_frame() const {
-    if (movement_.phase == MovementPhase::WallPause) {
-        return select_wall_pause_frame();
+AppearanceState Buddy::make_appearance_state() const noexcept {
+    AppearanceState appearance;
+    appearance.activity = activity_;
+    appearance.expression = expression_;
+    appearance.effect = effect_;
+    appearance.facing = facing_;
+    appearance.movement_phase = movement_.phase;
+    appearance.eye_direction = eye_direction_;
+    appearance.body_pose = (movement_.phase == MovementPhase::WallPause) ? BodyPose::WallPause : BodyPose::Neutral;
+    appearance.walk_frame_index = movement_.walk_frame_index;
+    appearance.sparkle_frame_index = sparkle_frame_index_;
+    
+    if (activity_ == Activity::Walking) {
+        appearance.cap_variant = (movement_.walk_frame_index == 0) ? CapVariant::Primary : CapVariant::Alternate;
+    } else {
+        appearance.cap_variant = (idle_frame_index_ == 0) ? CapVariant::Primary : CapVariant::Alternate;
     }
 
-    switch (activity_) {
+    return appearance;
+}
+
+std::vector<std::string> Buddy::resolve_appearance_frame(const AppearanceState& appearance) const {
+    if (appearance.effect == Effect::Sparkle) {
+        return resolve_effect_frame(appearance);
+    }
+
+    return resolve_body_frame(appearance);
+}
+
+std::vector<std::string> Buddy::resolve_body_frame(const AppearanceState& appearance) const {
+
+    if (movement_.phase == MovementPhase::WallPause) {
+        return resolve_wall_pause_frame(appearance);
+    }
+
+    switch (appearance.activity) {
     case Activity::Eating:
         return sprites::eat;
     case Activity::Sleeping:
         return sprites::sleep;
     case Activity::Walking:
-        return select_walking_frame();
+        return resolve_walking_frame(appearance);
     case Activity::Idle:
     default:
-        return select_idle_frame();
+        return resolve_idle_frame(appearance);
     }
 }
 
-std::vector<std::string> Buddy::select_idle_frame() const {
-    if (expression_ == Expression::Sad) {
+std::vector<std::string> Buddy::resolve_idle_frame(const AppearanceState& appearance) const {
+    if (appearance.expression == Expression::Sad) {
         return sprites::sad;
     }
-    if (expression_ == Expression::Blinking) {
+    if (appearance.expression == Expression::Blinking) {
         return sprites::blink;
     }
-    return (idle_frame_index_== 0) ? sprites::idle_0 : sprites::idle_1;
-}
 
-std::vector<std::string> Buddy::select_walking_frame() const {
-    if (expression_ == Expression::Blinking) {
-        return (movement_.walk_frame_index == 0) ? sprites::walk_0_blink : sprites::walk_1_blink;
+    if (appearance.eye_direction == EyeDirection::Left) {
+        return (appearance.cap_variant == CapVariant::Primary) ? sprites::look_left_0 : sprites::look_left_1;
     }
 
-    return (movement_.walk_frame_index == 0) ? sprites::walk_0 : sprites::walk_1;
+    if (appearance.eye_direction == EyeDirection::Right) {
+        return (appearance.cap_variant == CapVariant::Primary) ? sprites::look_right_0 : sprites::look_right_1;
+    }
+
+    return (appearance.cap_variant == CapVariant::Primary) ? sprites::idle_0 : sprites::idle_1;
 }
 
-std::vector<std::string> Buddy::select_wall_pause_frame() const {
-    if (expression_ == Expression::Blinking) {
+std::vector<std::string> Buddy::resolve_walking_frame(const AppearanceState& appearance) const {
+    if (appearance.expression == Expression::Blinking) {
+        return (appearance.cap_variant == CapVariant::Primary) ? sprites::walk_0_blink : sprites::walk_1_blink;
+    }
+
+    return (appearance.cap_variant == CapVariant::Primary) ? sprites::walk_0 : sprites::walk_1;
+}
+
+std::vector<std::string> Buddy::resolve_wall_pause_frame(const AppearanceState& appearance) const {
+    if (appearance.expression == Expression::Blinking) {
         return sprites::walk_0_blink;
     }
 
     return sprites::walk_0;
 }
 
-std::vector<std::string> Buddy::select_effect_frame() const {
-    switch (sparkle_frame_index_) {
+std::vector<std::string> Buddy::resolve_effect_frame(const AppearanceState& appearance) const {
+    switch (appearance.sparkle_frame_index) {
     case 0:
         return sprites::sparkle_0;
     case 1:
@@ -402,8 +441,49 @@ void Buddy::update_effects(double dt_seconds) {
     }
 }
 
+void Buddy::update_micro_appearance(double dt_seconds) {
+    if (time_until_next_look_ > 0.0) {
+        time_until_next_look_ -= dt_seconds;
+        if (time_until_next_look_ < 0.0) {
+            time_until_next_look_ = 0.0;
+        }
+    }
+
+    if (look_duration_remaining_ > 0.0) {
+        look_duration_remaining_ -= dt_seconds;
+        if (look_duration_remaining_ < 0.0) {
+            look_duration_remaining_ = 0.0;
+        }
+    }
+
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking ||
+            expression_ == Expression::Blinking || expression_ == Expression::Sad || effect_ == Effect::Sparkle) {
+        eye_direction_ = EyeDirection::Center;
+        look_duration_remaining_ = 0.0;
+        return;
+    }
+
+    if (movement_.phase == MovementPhase::WallPause) {
+        eye_direction_ = EyeDirection::Center;
+        look_duration_remaining_ = 0.0;
+        return;
+    }
+
+    if (look_duration_remaining_ > 0.0) {
+        return;
+    }
+
+    eye_direction_ = EyeDirection::Center;
+
+    if (time_until_next_look_ <= 0.0) {
+        eye_direction_ = random_look_direction();
+        look_duration_remaining_ = random_look_duration();
+        time_until_next_look_ = random_time_until_next_look();
+    }
+}
+
 int Buddy::body_frame_width() const noexcept {
-    return frame_width(current_body_frame());
+    return frame_width(resolve_body_frame(make_appearance_state()));
 }
 
 int Buddy::frame_width(const std::vector<std::string>& frame) const noexcept {
@@ -432,6 +512,21 @@ double Buddy::random_idle_duration() {
 double Buddy::random_wall_pause_duration() {
     std::uniform_real_distribution<double> duration_dist(0.50, 0.75);
     return duration_dist(rng_);
+}
+
+double Buddy::random_time_until_next_look() {
+    std::uniform_real_distribution<double> duration_dist(2.0, 5.0);
+    return duration_dist(rng_);
+}
+
+double Buddy::random_look_duration() {
+    std::uniform_real_distribution<double> duration_dist(0.6, 1.2);
+    return duration_dist(rng_);
+}
+
+EyeDirection Buddy::random_look_direction() {
+    std::uniform_int_distribution<int> dir_dist(0, 1);
+    return (dir_dist(rng_) == 0) ? EyeDirection::Left : EyeDirection::Right;
 }
 
 double Buddy::random_time_until_next_sparkle() {

@@ -25,6 +25,46 @@ inline const std::vector<std::string> idle_1 = {
     "    |________|"
 };
 
+inline const std::vector<std::string> look_left_0 = {
+    "      ",
+    "      ",
+    "    .-o-OO-o-.",
+    "  (____________)",
+    "    |o    o  |",
+    "    |        |",
+    "    |________|"
+};
+
+inline const std::vector<std::string> look_left_1 = {
+    "      ",
+    "      ",
+    "    .-O-oo-O-.",
+    "  (____________)",
+    "    |o    o  |",
+    "    |        |",
+    "    |________|"
+};
+
+inline const std::vector<std::string> look_right_0 = {
+    "      ",
+    "      ",
+    "    .-o-OO-o-.",
+    "  (____________)",
+    "    |  o    o|",
+    "    |        |",
+    "    |________|"
+};
+
+inline const std::vector<std::string> look_right_1 = {
+    "      ",
+    "      ",
+    "    .-O-oo-O-.",
+    "  (____________)",
+    "    |  o    o|",
+    "    |        |",
+    "    |________|"
+};
+
 inline const std::vector<std::string> walk_0 = {
     "      ",
     "    .-o-OO-o-.",

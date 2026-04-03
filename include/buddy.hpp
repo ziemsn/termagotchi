@@ -28,6 +28,22 @@ enum class Facing {
     Right
 };
 
+enum class EyeDirection {
+    Center,
+    Left,
+    Right
+};
+
+enum class CapVariant {
+    Primary,
+    Alternate
+};
+
+enum class BodyPose {
+    Neutral,
+    WallPause
+};
+
 enum class MovementBurstKind {
     None,
     ShortShuffle,
@@ -50,6 +66,20 @@ struct MovementState {
     std::size_t walk_frame_index = 0;
     int burst_steps_remaining = 0;
     MovementBurstKind burst_kind = MovementBurstKind::None;
+};
+
+struct AppearanceState {
+    Activity activity = Activity::Idle;
+    Expression expression = Expression::Neutral;
+    Effect effect = Effect::None;
+    Facing facing = Facing::Right;
+    MovementPhase movement_phase = MovementPhase::IdlePause;
+
+    EyeDirection eye_direction = EyeDirection::Center;
+    CapVariant cap_variant = CapVariant::Primary;
+    BodyPose body_pose = BodyPose::Neutral;
+    std::size_t walk_frame_index = 0;
+    std::size_t sparkle_frame_index = 0;
 };
 
 enum class Command {
@@ -94,17 +124,23 @@ private:
     void resolve_activity();
     void update_expression(double dt_seconds);
     void update_effects(double dt_seconds);
+    void update_micro_appearance(double dt_seconds);
     void update_movement(double dt_seconds);
     int body_frame_width() const noexcept;
     int frame_width(const std::vector<std::string>& frame) const noexcept;
-    std::vector<std::string> current_body_frame() const;
-    std::vector<std::string> select_idle_frame() const;
-    std::vector<std::string> select_walking_frame() const;
-    std::vector<std::string> select_wall_pause_frame() const;
-    std::vector<std::string> select_effect_frame() const;
+    AppearanceState make_appearance_state() const noexcept;
+    std::vector<std::string> resolve_appearance_frame(const AppearanceState& appearance) const;
+    std::vector<std::string> resolve_body_frame(const AppearanceState& appearance) const;
+    std::vector<std::string> resolve_idle_frame(const AppearanceState& appearance) const;
+    std::vector<std::string> resolve_walking_frame(const AppearanceState& appearance) const;
+    std::vector<std::string> resolve_effect_frame(const AppearanceState& appearance) const;
+    std::vector<std::string> resolve_wall_pause_frame(const AppearanceState& appearance) const;
     int random_walk_direction();
     double random_idle_duration();
     double random_wall_pause_duration();
+    double random_time_until_next_look();
+    double random_look_duration();
+    EyeDirection random_look_direction();
     double random_time_until_next_sparkle();
     int random_short_shuffle_steps();
     int random_long_walk_steps();
@@ -123,6 +159,7 @@ private:
    Expression expression_ = Expression::Neutral;
    Effect effect_ = Effect::None;
    Facing facing_ = Facing::Right;
+   EyeDirection eye_direction_ = EyeDirection::Center;
    bool running_ = true;
    bool sleeping_requested_ = false;
 
@@ -130,6 +167,8 @@ private:
    double animation_timer_ = 0.0;
    double time_until_next_blink_ = 4.0;
    double blink_duration_remaining_ = 0.0;
+   double time_until_next_look_ = 0.0;
+   double look_duration_remaining_ = 0.0;
    double time_until_next_sparkle_ = 0.0;
    double sparkle_animation_timer_ = 0.0;
    double action_timer_ = 0.0;
