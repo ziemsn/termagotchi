@@ -31,10 +31,10 @@ void Buddy::update(double dt_seconds) {
 void Buddy::apply_command(Command cmd) {
     switch (cmd) {
     case Command::Feed:
-        stats_.hunger -= 20.0;
-        stats_.happiness += 5.0;
+        stats_.hunger -= kAutoEatHungerReduction_;
+        stats_.happiness += kAutoEatHappinessBoost_;
         activity_ = Activity::Eating;
-        action_timer_ = 1.0;
+        action_timer_ = kAutoEatHungerThreshold_;
         break;
 
     case Command::Pet:
@@ -211,9 +211,22 @@ void Buddy::resolve_activity() {
         sleeping_requested_ = false;
     }
 
+    if (stats_.energy < kAutoSleepEnergyThreshold_) {
+        sleeping_requested_ = true;
+    }
+
+    const bool should_auto_sleep = sleeping_requested_;
+
+    if (action_timer_ <= 0.0 && !should_auto_sleep && stats_.hunger >= kAutoEatHungerThreshold_) {
+        stats_.hunger -= kAutoEatHungerReduction_;
+        stats_.happiness += kAutoEatHappinessBoost_;
+        clamp_stats();
+        action_timer_ = kAutoEatDurationSeconds_;
+    }
+    
     if (action_timer_ > 0.0) {
         activity_ = Activity::Eating;
-    } else if (sleeping_requested_ || stats_.energy < 15.0) {
+    } else if (should_auto_sleep) {
         activity_ = Activity::Sleeping;
     } else if (movement_.active) {
         activity_ = Activity::Walking;
@@ -365,13 +378,13 @@ int Buddy::random_walk_direction() {
     return dir_dist(rng_) == 0 ? -1 : 1;
 }
 
-double Buddy::random_walk_duration() {
-    std::uniform_real_distribution<double> duration_dist(2.0, 4.0);
-    return duration_dist(rng_);
-}
+/* double Buddy::random_walk_duration() { */
+/*     std::uniform_real_distribution<double> duration_dist(2.0, 4.0); */
+/*     return duration_dist(rng_); */
+/* } */
 
 double Buddy::random_idle_duration() {
-    std::uniform_real_distribution<double> duration_dist(1.0, 3.0);
+    std::uniform_real_distribution<double> duration_dist(2.0, 4.0);
     return duration_dist(rng_);
 }
 
@@ -381,11 +394,11 @@ double Buddy::random_time_until_next_sparkle() {
 }
 
 int Buddy::random_short_shuffle_steps() {
-    std::uniform_int_distribution<int> step_dist(1, 3);
+    std::uniform_int_distribution<int> step_dist(3, 5);
     return step_dist(rng_);
 }
 int Buddy::random_long_walk_steps() {
-    std::uniform_int_distribution<int> step_dist(6, 10);
+    std::uniform_int_distribution<int> step_dist(6, 12);
     return step_dist(rng_);
 }
 

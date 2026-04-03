@@ -137,5 +137,10 @@ private:
    static constexpr int kWalkMinX_ = 0;
    static constexpr int kRenderInnerWidth_ = 37;
    static constexpr double kEarlyTurnProbability_ = 0.12;
+   static constexpr double kAutoEatHungerThreshold_ = 80.0;
+   static constexpr double kAutoEatHungerReduction_ = 20.0;
+   static constexpr double kAutoEatHappinessBoost_ = 5.0;
+   static constexpr double kAutoEatDurationSeconds_ = 1.0;
+   static constexpr double kAutoSleepEnergyThreshold_ = 15.0;
 
 };
