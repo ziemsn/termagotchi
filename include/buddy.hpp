@@ -44,6 +44,30 @@ enum class BodyPose {
     WallPause
 };
 
+enum class Stance {
+    Sitting,
+    Standing
+};
+
+enum class BodyWidthProfile {
+    Full,
+    Narrow
+};
+
+enum class SpriteLayerRole {
+    None,
+    Cap,
+    Eyes,
+    Body,
+    Feed,
+    Effect
+};
+
+struct SpriteCell {
+    char glyph = ' ';
+    SpriteLayerRole role = SpriteLayerRole::None;
+};
+
 enum class MovementBurstKind {
     None,
     ShortShuffle,
@@ -55,6 +79,7 @@ enum class MovementPhase {
     WalkingBurst,
     WallPause
 };
+
 
 struct MovementState {
     int x_position = 0;
@@ -81,6 +106,21 @@ struct AppearanceState {
     std::size_t walk_frame_index = 0;
     std::size_t sparkle_frame_index = 0;
 };
+using SpriteRow = std::vector<SpriteCell>;
+
+struct ComposedSprite {
+    std::vector<SpriteRow> rows;
+};
+
+struct PoseState {
+    AppearanceState appearance;
+    Stance stance = Stance::Sitting;
+    BodyWidthProfile body_width = BodyWidthProfile::Full;
+
+    int top_padding_rows = 0;
+    bool has_feet = false;
+    std::size_t feet_Frame_index = 0;
+};
 
 enum class Command {
     Feed,
@@ -99,8 +139,10 @@ struct BuddyStats {
 
 struct BuddyRenderState {
     AppearanceState appearance;
+    PoseState pose;
     BuddyStats stats;
     int x_position = 0;
+    ComposedSprite sprite;
     std::vector<std::string> frame;
     std::string title_line;
     std::string mood_line;
@@ -137,6 +179,10 @@ private:
     void update_micro_appearance(double dt_seconds);
     void update_movement(double dt_seconds);
     int body_frame_width() const noexcept;
+    PoseState make_pose_state(const AppearanceState& appearance) const noexcept;
+    ComposedSprite compose_sprite(const PoseState& pose) const;
+    ComposedSprite compose_legacy_sprite(const AppearanceState& appearance) const;
+    std::vector<std::string> flatten_sprite(const ComposedSprite& sprite) const;
     int frame_width(const std::vector<std::string>& frame) const noexcept;
     AppearanceState make_appearance_state() const noexcept;
     std::vector<std::string> resolve_appearance_frame(const AppearanceState& appearance) const;

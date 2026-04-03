@@ -18,6 +18,48 @@ std::string make_stat_line(const std::string& label, double value) {
     return label + make_bar(value);
 }
 
+int legacy_cap_row(const AppearanceState& appearance) {
+    if (appearance.effect == Effect::Sparkle) {
+        return 2;
+    }
+
+    if (appearance.activity == Activity::Walking | appearance.movement_phase == MovementPhase::WallPause) {
+        return 1;
+    }
+
+    return 2;
+}
+
+int legacy_eye_row(const AppearanceState& appearance) {
+    if (appearance.effect == Effect::Sparkle) {
+        return 4;
+    }
+    
+    if (appearance.activity == Activity::Walking | appearance.movement_phase == MovementPhase::WallPause) {
+        return 3;
+    }
+
+    return 4;
+}
+
+int legacy_feet_row(const AppearanceState& appearance) {
+    if (appearance.activity == Activity::Walking | appearance.movement_phase == MovementPhase::WallPause) {
+        return 6;
+    }
+
+    return -1;
+}
+
+SpriteLayerRole classify_legacy_cell(const AppearanceState& appearance, std::size_t row, char glyph) {
+    if (glyph == ' ') return SpriteLayerRole::None;
+    if (appearance.effect == Effect::Sparkle && row < 2 && (glyph == '*' || glyph == '+' || glyph == '.')) return SpriteLayerRole::Effect;
+    if (static_cast<int>(row) == legacy_feet_row(appearance) && (glyph == '/' || glyph == '\\')) return SpriteLayerRole::Feed;
+    if (static_cast<int>(row) == legacy_eye_row(appearance) && (glyph == 'o' || glyph == 'O' || glyph == '-')) return SpriteLayerRole::Eyes;
+    if (static_cast<int>(row) == legacy_cap_row(appearance)) return SpriteLayerRole::Cap;
+    return SpriteLayerRole::Body;
+}
+
+
 } // namespace
 
 Buddy::Buddy(std::string name) : name_(std::move(name)), rng_(std::random_device{}()) {
@@ -133,9 +175,11 @@ int Buddy::x_position() const noexcept {
 BuddyRenderState Buddy::render_state() const {
     BuddyRenderState state;
     state.appearance = make_appearance_state();
+    state.pose = make_pose_state(state.appearance);
     state.stats = stats_;
     state.x_position = movement_.x_position;
-    state.frame = resolve_appearance_frame(state.appearance);
+    state.sprite = compose_sprite(state.pose);
+    state.frame = flatten_sprite(state.sprite);
     state.title_line = "Buddy: " + name_;
     state.mood_line = "Mood: " + mood_text();
     state.hunger_line = make_stat_line("Hunger:      ", stats_.hunger);
@@ -144,8 +188,69 @@ BuddyRenderState Buddy::render_state() const {
     return state;
 }
 
+PoseState Buddy::make_pose_state(const AppearanceState& appearance) const noexcept {
+    PoseState pose;
+    pose.appearance = appearance;
+
+    if (appearance.activity == Activity::Walking || appearance.movement_phase == MovementPhase::WallPause) {
+        pose.stance = Stance::Standing;
+        pose.body_width = BodyWidthProfile::Narrow;
+        pose.top_padding_rows = 0;
+        pose.has_feet = true;
+        pose.feet_Frame_index = appearance.walk_frame_index;
+    } else {
+        pose.stance = Stance::Sitting;
+        pose.body_width = BodyWidthProfile::Full;
+        pose.top_padding_rows = 1;
+        pose.has_feet = false;
+        pose.feet_Frame_index = 0;
+    }
+
+    return pose;
+}
+
+ComposedSprite Buddy::compose_sprite(const PoseState& pose) const {
+    return compose_legacy_sprite(pose.appearance);
+}
+
+ComposedSprite Buddy::compose_legacy_sprite(const AppearanceState& appearance) const {
+    const auto frame = resolve_appearance_frame(appearance);
+
+    ComposedSprite sprite;
+    sprite.rows.reserve(frame.size());
+
+    for (std::size_t row = 0; row < frame.size(); ++row) {
+        SpriteRow sprite_row;
+        sprite_row.reserve(frame[row].size());
+
+        for (char glyph : frame[row]) {
+            sprite_row.push_back(SpriteCell{glyph, classify_legacy_cell(appearance, row, glyph)});
+        }
+
+        sprite.rows.push_back(std::move(sprite_row));
+    }
+
+    return sprite;
+}
+
+std::vector<std::string> Buddy::flatten_sprite(const ComposedSprite& sprite) const {
+    std::vector<std::string> frame;
+    frame.reserve(sprite.rows.size());
+
+    for (const auto& row : sprite.rows) {
+        std::string text;
+        text.reserve(row.size());
+        for (const auto& cell : row) {
+            text.push_back(cell.glyph);
+        }
+        frame.push_back(std::move(text));
+    }
+
+    return frame;
+}
+
 std::vector<std::string> Buddy::current_frame() const {
-    return resolve_appearance_frame(make_appearance_state());
+    return flatten_sprite(compose_sprite(make_pose_state(make_appearance_state())));
 }
 
 AppearanceState Buddy::make_appearance_state() const noexcept {
@@ -553,7 +658,7 @@ void Buddy::update_micro_appearance(double dt_seconds) {
 }
 
 int Buddy::body_frame_width() const noexcept {
-    return frame_width(resolve_body_frame(make_appearance_state()));
+    return frame_width(flatten_sprite(compose_sprite(make_pose_state(make_appearance_state()))));
 }
 
 int Buddy::frame_width(const std::vector<std::string>& frame) const noexcept {
