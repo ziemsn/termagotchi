@@ -98,12 +98,15 @@ struct BuddyStats {
 };
 
 struct BuddyRenderState {
-    std::string name;
     AppearanceState appearance;
     BuddyStats stats;
     int x_position = 0;
-    std::string mood_text;
     std::vector<std::string> frame;
+    std::string title_line;
+    std::string mood_line;
+    std::string hunger_line;
+    std::string energy_line;
+    std::string happiness_line;
 };
 
 class Buddy {
@@ -149,6 +152,8 @@ private:
     double random_wall_pause_duration();
     double random_time_until_next_look();
     double random_look_duration();
+    double random_time_until_next_wobble();
+    double random_wobble_duration();
     EyeDirection random_look_direction();
     double random_time_until_next_sparkle();
     int random_short_shuffle_steps();
@@ -169,6 +174,7 @@ private:
    Effect effect_ = Effect::None;
    Facing facing_ = Facing::Right;
    EyeDirection eye_direction_ = EyeDirection::Center;
+   CapVariant cap_variant_ = CapVariant::Primary;
    bool running_ = true;
    bool sleeping_requested_ = false;
 
@@ -178,11 +184,13 @@ private:
    double blink_duration_remaining_ = 0.0;
    double time_until_next_look_ = 0.0;
    double look_duration_remaining_ = 0.0;
+   double time_until_next_wobble_ = 0.0;
+   double wobble_duration_remaining_ = 0.0;
+   double wobble_animation_timer_ = 0.0;
    double time_until_next_sparkle_ = 0.0;
    double sparkle_animation_timer_ = 0.0;
    double action_timer_ = 0.0;
 
-   std::size_t idle_frame_index_ = 0;
    int sparkle_frame_index_ = 0;
    int sparkle_steps_remaining_ = 0;
    MovementState movement_{};
@@ -191,6 +199,7 @@ private:
 
    static constexpr double kMoveStepInterval_ = 0.20;
    static constexpr double kSparkleFrameInterval_ = 0.4;
+   static constexpr double kWobbleFrameInterval_ = 0.5;
    static constexpr int kSparkleSequenceLength_ = 4;
    static constexpr int kWalkMinX_ = 0;
    static constexpr int kRenderInnerWidth_ = 37;
