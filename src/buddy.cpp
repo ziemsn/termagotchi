@@ -113,6 +113,17 @@ int Buddy::x_position() const noexcept {
     return movement_.x_position;
 }
 
+BuddyRenderState Buddy::render_state() const {
+    BuddyRenderState state;
+    state.name = name_;
+    state.appearance = make_appearance_state();
+    state.stats = stats_;
+    state.x_position = movement_.x_position;
+    state.mood_text = mood_text();
+    state.frame = resolve_appearance_frame(state.appearance);
+    return state;
+}
+
 std::vector<std::string> Buddy::current_frame() const {
     return resolve_appearance_frame(make_appearance_state());
 }

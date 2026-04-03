@@ -147,7 +147,8 @@ int main() {
             input_snapshot = current_input;
         }
 
-        render::draw(buddy, input_snapshot);
+        const BuddyRenderState render_state = buddy.render_state();
+        render::draw(render_state, input_snapshot);
         std::this_thread::sleep_until(frame_start + frame_time);
     }
 

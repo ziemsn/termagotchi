@@ -1,4 +1,5 @@
 #include "render.hpp"
+#include "buddy.hpp"
 
 #include <iomanip>
 #include <iostream>
@@ -53,24 +54,23 @@ void show_cursor() {
     std::cout << "\033[?25h";
 }
 
-void draw(const Buddy& buddy,const std::string& input_buffer) {
+void draw(const BuddyRenderState& buddy,const std::string& input_buffer) {
     clear_screen();
 
-    const auto& s = buddy.stats();
-    const auto frame = buddy.current_frame();
+    const auto& s = buddy.stats;
+    const auto frame = buddy.frame;
     const std::string border = "+" + std::string(kInnerWidth + 2, '-') + "+";
 
     std::cout << border << '\n';
-    framed_line("Buddy: " + buddy.name());
-    framed_line("Mood: " + buddy.mood_text());
-    /* framed_line("X: " + std::to_string(buddy.x_position())); */
+    framed_line("Buddy: " + buddy.name);
+    framed_line("Mood: " + buddy.mood_text);
     framed_line("Hunger:    " + bar(s.hunger));
     framed_line("Energy:    " + bar(s.energy));
     framed_line("Happiness: " + bar(s.happiness));
     framed_line();
 
     for (const auto& row : frame) {
-        const std::string padded_row = std::string(static_cast<std::size_t>(buddy.x_position()), ' ') + row; 
+        const std::string padded_row = std::string(static_cast<std::size_t>(buddy.x_position), ' ') + row; 
         framed_line(padded_row);
     }
 

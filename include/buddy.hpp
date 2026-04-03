@@ -97,6 +97,15 @@ struct BuddyStats {
     double happiness = 70;      // 0 = sad, 100 = very happy
 };
 
+struct BuddyRenderState {
+    std::string name;
+    AppearanceState appearance;
+    BuddyStats stats;
+    int x_position = 0;
+    std::string mood_text;
+    std::vector<std::string> frame;
+};
+
 class Buddy {
 public:
     Buddy(std::string name);
@@ -114,9 +123,7 @@ public:
     bool is_walking() const noexcept;
     bool is_sparkling() const noexcept;
     int x_position() const noexcept;
-
-    std::vector<std::string> current_frame() const;
-    std::string mood_text() const;
+    BuddyRenderState render_state() const;
 
 private:
     void tick_action_timers(double dt_seconds);
@@ -135,6 +142,8 @@ private:
     std::vector<std::string> resolve_walking_frame(const AppearanceState& appearance) const;
     std::vector<std::string> resolve_effect_frame(const AppearanceState& appearance) const;
     std::vector<std::string> resolve_wall_pause_frame(const AppearanceState& appearance) const;
+    std::vector<std::string> current_frame() const;
+    std::string mood_text() const;
     int random_walk_direction();
     double random_idle_duration();
     double random_wall_pause_duration();
