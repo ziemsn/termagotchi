@@ -16,13 +16,8 @@ struct EyePlacement {
     char right_glyph = 'o';
 };
 
-ComposedSprite make_sprite_canvas(int height, int width = kSpriteCanvasWidth) {
-    ComposedSprite sprite;
-    sprite.rows.assign(
-        static_cast<std::size_t>(height),
-        SpriteRow(static_cast<std::size_t>(width), SpriteCell{})
-    );
-    return sprite;
+bool is_turn_pose(const PoseState& pose) {
+    return pose.appearance.movement_phase == MovementPhase::TurningPause;
 }
 
 void put_sprite_cell(ComposedSprite& sprite, int row, int col, char glyph, SpriteLayerRole role) {
@@ -40,6 +35,42 @@ void put_sprite_cell(ComposedSprite& sprite, int row, int col, char glyph, Sprit
 
     sprite.rows[static_cast<std::size_t>(row)][static_cast<std::size_t>(col)] = SpriteCell{glyph, role};
 }
+
+void draw_blush(ComposedSprite& sprite, const PoseState& pose, int cheek_row, int face_x) {
+    if (!pose.appearance.blush_visible) {
+        return;
+    }
+
+    int left_cheek_col = 0;
+    int right_cheek_col = 0;
+
+    if (pose.body_width == BodyWidthProfile::Full) {
+        left_cheek_col = face_x + 1;
+        right_cheek_col = face_x + 8;
+    } else if (pose.appearance.facing == Facing::Right) {
+        left_cheek_col = face_x + 1;
+        right_cheek_col = face_x + 4;
+    } else if (pose.appearance.facing == Facing::Left) {
+        left_cheek_col = face_x + 3;
+        right_cheek_col = face_x + 6;
+    } else {
+        left_cheek_col = face_x + 2;
+        right_cheek_col = face_x + 5;
+    }
+
+    put_sprite_cell(sprite, cheek_row, left_cheek_col, '.', SpriteLayerRole::Blush);
+    put_sprite_cell(sprite, cheek_row, right_cheek_col, '.', SpriteLayerRole::Blush);
+}
+
+ComposedSprite make_sprite_canvas(int height, int width = kSpriteCanvasWidth) {
+    ComposedSprite sprite;
+    sprite.rows.assign(
+        static_cast<std::size_t>(height),
+        SpriteRow(static_cast<std::size_t>(width), SpriteCell{})
+    );
+    return sprite;
+}
+
 
 void overlay_part(ComposedSprite& sprite, int row, int col, const std::string& text, SpriteLayerRole role) {
     for (std::size_t i = 0; i < text.size(); ++i) {
@@ -187,6 +218,10 @@ void draw_brim(ComposedSprite& sprite, const PoseState& pose, int row, int cap_a
 }
 
 char eye_glyph_for_pose(const PoseState& pose) {
+    if (is_turn_pose(pose)) {
+        return (pose.feet_frame_index % 2 == 0) ? 'o' : 'O';
+    }
+
     if (pose.appearance.activity == Activity::Sleeping || pose.appearance.expression == Expression::Blinking) {
         return '-';
     }
@@ -198,12 +233,6 @@ char eye_glyph_for_pose(const PoseState& pose) {
     return 'o';
 }
 
-bool supports_eye_direction_offset(const PoseState& pose) {
-    return pose.appearance.activity != Activity::Sleeping &&
-           pose.appearance.expression != Expression::Blinking &&
-           pose.appearance.expression != Expression::Sad;
-}
-
 EyePlacement resolve_eye_placement(const PoseState& pose, int body_row) {
     EyePlacement eyes;
     eyes.row = body_row;
@@ -213,7 +242,11 @@ EyePlacement resolve_eye_placement(const PoseState& pose, int body_row) {
     const int body_x = body_anchor_x(pose);
     const int face_x = body_x + body_row_lean_offset(pose, 0);
 
-    if (pose.body_width == BodyWidthProfile::Full) {
+    if (is_turn_pose(pose)) {
+        eyes.left_col = face_x + 3;
+        eyes.right_col = face_x + 6;
+        eyes.row = body_row;
+    } else if (pose.body_width == BodyWidthProfile::Full) {
         eyes.left_col = face_x + 2;
         eyes.right_col = face_x + 7;
     } else {
@@ -229,7 +262,7 @@ EyePlacement resolve_eye_placement(const PoseState& pose, int body_row) {
         }
     }
 
-    if (supports_eye_direction_offset(pose)) {
+    if (!is_turn_pose(pose)) {
         if (pose.appearance.eye_direction == EyeDirection::Left) {
             --eyes.left_col;
             --eyes.right_col;
@@ -331,7 +364,9 @@ void overlay_sparkle(ComposedSprite& sprite, const PoseState& pose, int crown_ro
     }
 }
 
-void apply_overlays(ComposedSprite& sprite, const PoseState& pose, int crown_row, int crown_x) {
+void apply_overlays(ComposedSprite& sprite, const PoseState& pose, int crown_row, int crown_x, int cheek_row, int face_x) {
+    draw_blush(sprite, pose, cheek_row, face_x);
+
     if (pose.appearance.effect == Effect::Sparkle) {
         overlay_sparkle(sprite, pose, crown_row, crown_x);
     }
@@ -365,7 +400,7 @@ ComposedSprite compose(const PoseState& pose) {
     if (pose.has_feet) {
         draw_feet(composed, pose, body_row + 3, body_x);
     }
-    apply_overlays(composed, pose, crown_row, crown_x);
+    apply_overlays(composed, pose, crown_row, crown_x, body_row + 1, body_mid_x);
 
     return composed;
 }

@@ -24,6 +24,7 @@ Buddy::Buddy(std::string name) : name_(std::move(name)), rng_(std::random_device
     movement_.direction = random_walk_direction();
     movement_.phase = MovementPhase::IdlePause;
     start_idle_pause();
+    time_until_next_blink_ = random_time_until_next_blink();
     time_until_next_look_ = random_time_until_next_look();
     time_until_next_wobble_ = random_time_until_next_wobble();
     time_until_next_sparkle_ = random_time_until_next_sparkle();
@@ -59,6 +60,8 @@ void Buddy::apply_command(Command cmd) {
 
     case Command::Pet:
         stats_.happiness += 8.0;
+        blush_duration_remaining_ = std::max(blush_duration_remaining_, 4.0);
+        time_until_next_look_ = 0.0;
         break;
 
     case Command::Sleep:
@@ -205,9 +208,9 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
     appearance.facing = facing_;
     appearance.movement_phase = movement_.phase;
     appearance.eye_direction = eye_direction_;
-    /* appearance.body_pose = BodyPose::Neutral; */
     appearance.walk_frame_index = movement_.walk_frame_index;
     appearance.sparkle_frame_index = sparkle_frame_index_;
+    appearance.blush_visible = (blush_duration_remaining_ > 0.0) && activity_ != Activity::Sleeping && activity_ != Activity::Eating;
     
     if (activity_ == Activity::Walking) {
         appearance.cap_variant = (movement_.walk_frame_index == 0) ? CapVariant::Primary : CapVariant::Alternate;
@@ -321,8 +324,8 @@ void Buddy::update_expression(double dt_seconds) {
     } else if (blink_duration_remaining_ > 0.0) {
         expression_ = Expression::Blinking;
     } else if (time_until_next_blink_ <= 0.0) {
-        blink_duration_remaining_ = 0.15;
-        time_until_next_blink_ = 4.0;
+        blink_duration_remaining_ = random_blink_duration();
+        time_until_next_blink_ = random_time_until_next_blink();
         expression_ = Expression::Blinking;
     } else {
         expression_ = Expression::Neutral;
@@ -346,6 +349,13 @@ void Buddy::update_movement(double dt_seconds) {
         }
     } else if (movement_.phase == MovementPhase::TurningPause) {
         movement_.phase_timer -= dt_seconds;
+        movement_.move_step_timer += dt_seconds;
+
+        while (movement_.move_step_timer >= kMoveStepInterval_) {
+            movement_.move_step_timer -= kMoveStepInterval_;
+            movement_.walk_frame_index = (movement_.walk_frame_index + 1) % 2;
+        }
+
         if (movement_.phase_timer <= 0.0) {
             movement_.direction = movement_.pending_direction;
             facing_ = (movement_.direction < 0) ? Facing::Left : Facing::Right;
@@ -446,6 +456,13 @@ void Buddy::update_effects(double dt_seconds) {
 }
 
 void Buddy::update_micro_appearance(double dt_seconds) {
+    if (blush_duration_remaining_ > 0.0) {
+        blush_duration_remaining_ -= dt_seconds;
+        if (blush_duration_remaining_ < 0.0) {
+            blush_duration_remaining_ = 0.0;
+        }
+    }
+
     if (time_until_next_look_ > 0.0) {
         time_until_next_look_ -= dt_seconds;
         if (time_until_next_look_ < 0.0) {
@@ -475,10 +492,11 @@ void Buddy::update_micro_appearance(double dt_seconds) {
     }
 
     if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking ||
-            expression_ == Expression::Blinking || expression_ == Expression::Sad || effect_ == Effect::Sparkle) {
+            expression_ == Expression::Sad || effect_ == Effect::Sparkle) {
         eye_direction_ = EyeDirection::Center;
         cap_variant_ = CapVariant::Primary;
         look_duration_remaining_ = 0.0;
+        idle_eye_dart_steps_remaining_ = 0.0;
         wobble_duration_remaining_ = 0.0;
         wobble_animation_timer_ = 0.0;
         return;
@@ -488,6 +506,15 @@ void Buddy::update_micro_appearance(double dt_seconds) {
         eye_direction_ = EyeDirection::Center;
         cap_variant_ = CapVariant::Primary;
         look_duration_remaining_ = 0.0;
+        idle_eye_dart_steps_remaining_ = 0;
+        wobble_duration_remaining_ = 0.0;
+        wobble_animation_timer_ = 0.0;
+        return;
+    }
+
+    if (expression_ == Expression::Blinking) {
+        eye_direction_ = EyeDirection::Center;
+        cap_variant_ = CapVariant::Primary;
         wobble_duration_remaining_ = 0.0;
         wobble_animation_timer_ = 0.0;
         return;
@@ -498,12 +525,29 @@ void Buddy::update_micro_appearance(double dt_seconds) {
         return;
     }
 
+    if (idle_eye_dart_steps_remaining_ > 0) {
+        eye_direction_ = (eye_direction_ == EyeDirection::Left) ? EyeDirection::Right: EyeDirection::Left;
+        look_duration_remaining_ = random_eye_dart_duration();
+        --idle_eye_dart_steps_remaining_;
+        cap_variant_ = CapVariant::Primary;
+        wobble_duration_remaining_ = 0.0;
+        wobble_animation_timer_ = 0.0;
+        
+        if (idle_eye_dart_steps_remaining_ == 0) {
+            time_until_next_look_ = random_time_until_next_look();
+        }
+        return;
+    }
+
     eye_direction_ = EyeDirection::Center;
 
     if (time_until_next_look_ <= 0.0) {
         eye_direction_ = random_look_direction();
         look_duration_remaining_ = random_look_duration();
-        time_until_next_look_ = random_time_until_next_look();
+        idle_eye_dart_steps_remaining_ = random_idle_eye_dart_count() - 1;
+        if (idle_eye_dart_steps_remaining_ == 0) {
+            time_until_next_look_ = random_time_until_next_look();
+        }
         cap_variant_ = CapVariant::Primary;
         wobble_duration_remaining_ = 0.0;
         wobble_animation_timer_ = 0.0;
@@ -558,7 +602,17 @@ double Buddy::random_idle_duration() {
 }
 
 double Buddy::random_turn_pause_duration() {
-    std::uniform_real_distribution<double> duration_dist(0.4, 0.6);
+    std::uniform_real_distribution<double> duration_dist(0.5, 0.75);
+    return duration_dist(rng_);
+}
+
+double Buddy::random_time_until_next_blink() {
+    std::uniform_real_distribution<double> duration_dist(2.6, 5.8);
+    return duration_dist(rng_);
+}
+
+double Buddy::random_blink_duration() {
+    std::uniform_real_distribution<double> duration_dist(0.1, 0.2);
     return duration_dist(rng_);
 }
 
@@ -570,6 +624,16 @@ double Buddy::random_time_until_next_look() {
 double Buddy::random_look_duration() {
     std::uniform_real_distribution<double> duration_dist(0.6, 1.2);
     return duration_dist(rng_);
+}
+
+double Buddy::random_eye_dart_duration() {
+    std::uniform_real_distribution<double> duration_dist(0.1, 0.2);
+    return duration_dist(rng_);
+}
+
+int Buddy::random_idle_eye_dart_count() {
+    std::uniform_int_distribution<int> dart_dist(1, 3);
+    return dart_dist(rng_);
 }
 
 EyeDirection Buddy::random_look_direction() {
@@ -627,6 +691,7 @@ void Buddy::start_turn_pause(int next_direction, bool resume_walk_after_turn) {
     movement_.phase = MovementPhase::TurningPause;
     movement_.phase_timer = random_turn_pause_duration();
     movement_.move_step_timer = 0.0;
+    movement_.walk_frame_index = 0;
     movement_.pending_direction = next_direction;
     movement_.resume_walk_after_turn = resume_walk_after_turn;
     movement_.steps_until_random_turn = 0;

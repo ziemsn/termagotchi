@@ -83,9 +83,11 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
     if (cell.glyph == ' ') {
         return ansi::reset;
     }
-
     if (cell.role == SpriteLayerRole::Effect) {
         return ansi::magenta;
+    }
+    if (cell.role == SpriteLayerRole::Blush) {
+        return ansi::red;
     }
     if (cell.role == SpriteLayerRole::CapCrown || cell.role == SpriteLayerRole::CapBrim) {
         return state_accent_color(buddy);

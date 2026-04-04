@@ -61,6 +61,7 @@ enum class SpriteLayerRole {
     CapCrown,
     CapBrim,
     Eyes,
+    Blush,
     Body,
     Feet,
     Effect
@@ -108,6 +109,7 @@ struct AppearanceState {
 
     EyeDirection eye_direction = EyeDirection::Center;
     CapVariant cap_variant = CapVariant::Primary;
+    bool blush_visible = false;
     BodyPose body_pose = BodyPose::Neutral;
     std::size_t walk_frame_index = 0;
     std::size_t sparkle_frame_index = 0;
@@ -201,8 +203,12 @@ private:
     int random_walk_direction();
     double random_idle_duration();
     double random_turn_pause_duration();
+    double random_time_until_next_blink();
+    double random_blink_duration();
     double random_time_until_next_look();
     double random_look_duration();
+    double random_eye_dart_duration();
+    int random_idle_eye_dart_count();
     double random_time_until_next_wobble();
     double random_wobble_duration();
     EyeDirection random_look_direction();
@@ -235,11 +241,13 @@ private:
    double blink_duration_remaining_ = 0.0;
    double time_until_next_look_ = 0.0;
    double look_duration_remaining_ = 0.0;
+   int idle_eye_dart_steps_remaining_ = 0.0;
    double time_until_next_wobble_ = 0.0;
    double wobble_duration_remaining_ = 0.0;
    double wobble_animation_timer_ = 0.0;
    double time_until_next_sparkle_ = 0.0;
    double sparkle_animation_timer_ = 0.0;
+   double blush_duration_remaining_ = 0.0;
    double action_timer_ = 0.0;
 
    int sparkle_frame_index_ = 0;
