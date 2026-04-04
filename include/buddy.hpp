@@ -25,7 +25,8 @@ enum class Effect {
 
 enum class Facing {
     Left,
-    Right
+    Right, 
+    Forward
 };
 
 enum class EyeDirection {
@@ -79,7 +80,6 @@ enum class MovementBurstKind {
 enum class MovementPhase {
     IdlePause,
     WalkingBurst,
-    WallPause,
     TurningPause
 };
 
@@ -96,6 +96,7 @@ struct MovementState {
     MovementBurstKind burst_kind = MovementBurstKind::None;
     int pending_direction = 0;
     bool resume_walk_after_turn = false;
+    int steps_until_random_turn = 0;
 };
 
 struct AppearanceState {
@@ -199,7 +200,6 @@ private:
     std::string mood_text() const;
     int random_walk_direction();
     double random_idle_duration();
-    double random_wall_pause_duration();
     double random_turn_pause_duration();
     double random_time_until_next_look();
     double random_look_duration();
@@ -213,7 +213,6 @@ private:
     bool should_turn_around_early();
     void start_idle_pause();
     void start_walk_burst();
-    void start_wall_pause(int new_direction);
     void start_turn_pause(int new_direction, bool resume_walk_after_turn);
     void clamp_stats();
 

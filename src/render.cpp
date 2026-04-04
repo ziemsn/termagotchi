@@ -67,9 +67,6 @@ const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.activity == Activity::Eating) {
         return ansi::green;
     }
-    if (buddy.appearance.movement_phase == MovementPhase::WallPause) {
-        return ansi::blue;
-    }
     if (buddy.appearance.expression == Expression::Sad) {
         return ansi::red;
     }

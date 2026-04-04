@@ -102,17 +102,9 @@ std::string crown_right_shell_text(const PoseState& pose) {
 }
 
 int body_row_lean_offset(const PoseState& pose, int body_row_index) {
-    if (pose.body_width != BodyWidthProfile::Narrow) {
-        return 0;
-    }
+    (void)body_row_index;
 
-    if (pose.appearance.movement_phase == MovementPhase::TurningPause) {
-        if (pose.appearance.facing == Facing::Left) {
-            return (body_row_index <= 1) ? -1 : 0;
-        }
-        if (pose.appearance.facing == Facing::Right) {
-            return (body_row_index <= 1) ? 1 : 0;
-        }
+    if (pose.body_width != BodyWidthProfile::Narrow) {
         return 0;
     }
 
@@ -128,7 +120,7 @@ int body_row_lean_offset(const PoseState& pose, int body_row_index) {
 }
 
 int cap_anchor_x(const PoseState& pose, int body_anchor_x_value, int body_top_x) {
-    if (pose.body_width == BodyWidthProfile::Narrow) {
+    if (pose.body_width == BodyWidthProfile::Narrow && pose.appearance.facing != Facing::Forward) {
         return body_top_x;
     }
 
@@ -225,13 +217,7 @@ EyePlacement resolve_eye_placement(const PoseState& pose, int body_row) {
         eyes.left_col = face_x + 2;
         eyes.right_col = face_x + 7;
     } else {
-        if (pose.appearance.movement_phase == MovementPhase::TurningPause && pose.appearance.facing == Facing::Left) {
-            eyes.left_col = face_x + 1;
-            eyes.right_col = face_x + 3;
-        } else if (pose.appearance.movement_phase == MovementPhase::TurningPause && pose.appearance.facing == Facing::Right) {
-            eyes.left_col = face_x + 4;
-            eyes.right_col = face_x + 6;
-        } else if (pose.appearance.facing == Facing::Left) {
+        if (pose.appearance.facing == Facing::Left) {
             eyes.left_col = face_x + 1;
             eyes.right_col = face_x + 4;
         } else if (pose.appearance.facing == Facing::Right) {
