@@ -182,16 +182,15 @@ private:
     int body_frame_width() const noexcept;
     PoseState make_pose_state(const AppearanceState& appearance) const noexcept;
     ComposedSprite compose_sprite(const PoseState& pose) const;
-    ComposedSprite compose_legacy_sprite(const AppearanceState& appearance) const;
     std::vector<std::string> flatten_sprite(const ComposedSprite& sprite) const;
     int frame_width(const std::vector<std::string>& frame) const noexcept;
     AppearanceState make_appearance_state() const noexcept;
-    std::vector<std::string> resolve_appearance_frame(const AppearanceState& appearance) const;
-    std::vector<std::string> resolve_body_frame(const AppearanceState& appearance) const;
-    std::vector<std::string> resolve_idle_frame(const AppearanceState& appearance) const;
-    std::vector<std::string> resolve_walking_frame(const AppearanceState& appearance) const;
-    std::vector<std::string> resolve_effect_frame(const AppearanceState& appearance) const;
-    std::vector<std::string> resolve_wall_pause_frame(const AppearanceState& appearance) const;
+    /* std::vector<std::string> resolve_appearance_frame(const AppearanceState& appearance) const; */
+    /* std::vector<std::string> resolve_body_frame(const AppearanceState& appearance) const; */
+    /* std::vector<std::string> resolve_idle_frame(const AppearanceState& appearance) const; */
+    /* std::vector<std::string> resolve_walking_frame(const AppearanceState& appearance) const; */
+    /* std::vector<std::string> resolve_effect_frame(const AppearanceState& appearance) const; */
+    /* std::vector<std::string> resolve_wall_pause_frame(const AppearanceState& appearance) const; */
     std::vector<std::string> current_frame() const;
     std::string mood_text() const;
     int random_walk_direction();
