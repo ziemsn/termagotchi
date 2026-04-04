@@ -42,21 +42,17 @@ void framed_line_colored(const std::string& text, const char* color_code) {
     std::cout << "| " << color_code << fit_text(text) << ansi::reset << " |\n";
 }
 
-void overlay_text(std::string& row, const std::string& text, int x_offset) {
-    for (std::size_t i = 0; i < text.size(); ++i){
-        const int col = x_offset + static_cast<int>(i);
-        if (col < 0 || col >= static_cast<int>(row.size())) {
-            continue;
-        }
-        row[static_cast<std::size_t>(col)] = text[i];
-    }
-}
-
 using StageRow = std::vector<SpriteCell>;
 
 const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.effect == Effect::Sparkle) {
         return ansi::magenta;
+    }
+    if (buddy.appearance.body_pose == BodyPose::BreathingIn) {
+        return ansi::blue;
+    }
+    if (buddy.appearance.body_pose == BodyPose::BreathingOut) {
+        return ansi::cyan;
     }
     if (buddy.appearance.movement_phase == MovementPhase::TurningPause) {
         return ansi::cyan;

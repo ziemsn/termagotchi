@@ -42,6 +42,8 @@ enum class CapVariant {
 
 enum class BodyPose {
     Neutral,
+    BreathingIn,
+    BreathingOut,
     WallPause,
     Turning
 };
@@ -111,6 +113,7 @@ struct AppearanceState {
     CapVariant cap_variant = CapVariant::Primary;
     bool blush_visible = false;
     BodyPose body_pose = BodyPose::Neutral;
+    int idle_top_padding_rows = 1;
     std::size_t walk_frame_index = 0;
     std::size_t sparkle_frame_index = 0;
 };

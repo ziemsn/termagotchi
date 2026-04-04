@@ -2,9 +2,12 @@
 #include "sprite_compositor.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 namespace {
+
+constexpr double kIdleBreathCycleSeconds = 2.8;
 
 std::string make_bar(double value, int width = 10) {
     int filled = static_cast<int>((value / 100) * width);
@@ -168,7 +171,7 @@ PoseState Buddy::make_pose_state(const AppearanceState& appearance) const noexce
     } else {
         pose.stance = Stance::Sitting;
         pose.body_width = BodyWidthProfile::Full;
-        pose.top_padding_rows = 1;
+        pose.top_padding_rows = appearance.idle_top_padding_rows;
         pose.has_feet = false;
         pose.feet_frame_index = 0;
     }
@@ -210,6 +213,8 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
     appearance.eye_direction = eye_direction_;
     appearance.walk_frame_index = movement_.walk_frame_index;
     appearance.sparkle_frame_index = sparkle_frame_index_;
+    appearance.body_pose = BodyPose::Neutral;
+    appearance.idle_top_padding_rows = 1;
     appearance.blush_visible = (blush_duration_remaining_ > 0.0) && activity_ != Activity::Sleeping && activity_ != Activity::Eating;
     
     if (activity_ == Activity::Walking) {
@@ -218,10 +223,33 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
         appearance.cap_variant = cap_variant_;
     }
 
+    const bool should_idle_breath = activity_ == Activity::Idle && movement_.phase == MovementPhase::IdlePause && effect_ == Effect::None;
+
+    if (should_idle_breath) {
+        const double cycle = std::fmod(animation_timer_, kIdleBreathCycleSeconds);
+
+        if (cycle < 0.80) {
+            appearance.body_pose = BodyPose::Neutral;
+            appearance.idle_top_padding_rows = 1;
+        } else if (cycle < 1.45) {
+            appearance.body_pose = BodyPose::BreathingIn;
+            appearance.idle_top_padding_rows = 0;
+        } else if (cycle < 2.1) {
+            appearance.body_pose = BodyPose::Neutral;
+            appearance.idle_top_padding_rows = 0;
+        } else {
+            appearance.body_pose = BodyPose::BreathingOut;
+            appearance.idle_top_padding_rows = 1;
+        }
+    }
+            
+
     return appearance;
 }
 
 std::string Buddy::mood_text() const {
+    const AppearanceState appearance = make_appearance_state();
+
     if (activity_ == Activity::Sleeping) {
         return "Sleeping";
     }
@@ -230,6 +258,12 @@ std::string Buddy::mood_text() const {
     }
     if (movement_.phase == MovementPhase::TurningPause) {
         return "Turning";
+    }
+    if (appearance.body_pose == BodyPose::BreathingIn) {
+        return "Breathing in";
+    }
+    if (appearance.body_pose == BodyPose::BreathingOut) {
+        return "Breathing out";
     }
     if (expression_ == Expression::Sad) {
         return "Sad";

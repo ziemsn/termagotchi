@@ -78,8 +78,32 @@ void overlay_part(ComposedSprite& sprite, int row, int col, const std::string& t
     }
 }
 
+constexpr int kFixedSpriteHeight = 6;
+
+int body_row_count(const PoseState& pose) { 
+    if (pose.has_feet) {
+        return 3;
+    }
+
+    if (pose.appearance.body_pose == BodyPose::BreathingIn) {
+        return 4;
+    }
+
+    return 3;
+}
+
+int pose_vertical_offset_rows(const PoseState& pose) {
+    const int occupied_height = 2 + body_row_count(pose) + (pose.has_feet ? 1 : 0);
+    const int offset = kFixedSpriteHeight - occupied_height;
+    if (offset < 0) {
+        return 0;
+    }
+    return offset;
+}
+
 int sprite_height_for_pose(const PoseState& pose) {
-    return pose.top_padding_rows + 2 + 3 + (pose.has_feet ? 1 : 0);
+    (void)pose;
+    return kFixedSpriteHeight;
 }
 
 int body_anchor_x(const PoseState& pose) {
@@ -379,14 +403,17 @@ namespace sprite_compositor {
 ComposedSprite compose(const PoseState& pose) {
     ComposedSprite composed = make_sprite_canvas(sprite_height_for_pose(pose));
 
-    const int crown_row = pose.top_padding_rows;
+    const int body_rows = body_row_count(pose);
+    const int crown_row = pose_vertical_offset_rows(pose);
     const int brim_row = crown_row + 1;
     const int body_row = brim_row + 1;
     const int body_x = body_anchor_x(pose);
     const int body_top_x = body_x + body_row_lean_offset(pose, 0);
     const EyePlacement eyes = resolve_eye_placement(pose, body_row);
-    const int body_mid_x = body_x + body_row_lean_offset(pose, 1);
-    const int body_base_x = body_x + body_row_lean_offset(pose, 2);
+    const int cheek_row = body_row + 1;
+    const int cheek_x = body_x + body_row_lean_offset(pose, 1);
+    const int body_base_row_y = body_row + body_rows - 1;
+    const int body_base_x = body_x + body_row_lean_offset(pose, body_rows - 1);
     const int cap_anchor = cap_anchor_x(pose, body_x, body_top_x);
     const int crown_x = crown_left_col(pose, cap_anchor);
 
@@ -394,13 +421,16 @@ ComposedSprite compose(const PoseState& pose) {
     draw_brim(composed, pose, brim_row, cap_anchor);
 
     overlay_part(composed, body_row, body_top_x, body_wall_row(pose), SpriteLayerRole::Body);
-    overlay_part(composed, body_row + 1, body_mid_x, body_wall_row(pose), SpriteLayerRole::Body);
-    overlay_part(composed, body_row + 2, body_base_x, body_base_row(pose), SpriteLayerRole::Body);
+    for (int interior_row = 1; interior_row < body_rows - 1; ++interior_row) {
+        const int body_inner_x = body_x + body_row_lean_offset(pose, interior_row);
+        overlay_part(composed, body_row + interior_row, body_inner_x, body_wall_row(pose), SpriteLayerRole::Body);
+    }
+    overlay_part(composed, body_base_row_y, body_base_x, body_base_row(pose), SpriteLayerRole::Body);
     draw_eyes(composed, eyes);
     if (pose.has_feet) {
         draw_feet(composed, pose, body_row + 3, body_x);
     }
-    apply_overlays(composed, pose, crown_row, crown_x, body_row + 1, body_mid_x);
+    apply_overlays(composed, pose, crown_row, crown_x, cheek_row, cheek_x);
 
     return composed;
 }
