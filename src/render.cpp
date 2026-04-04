@@ -58,6 +58,9 @@ const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.effect == Effect::Sparkle) {
         return ansi::magenta;
     }
+    if (buddy.appearance.movement_phase == MovementPhase::TurningPause) {
+        return ansi::cyan;
+    }
     if (buddy.appearance.activity == Activity::Sleeping) {
         return ansi::cyan;
     }

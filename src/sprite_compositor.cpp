@@ -1,4 +1,5 @@
 #include "sprite_compositor.hpp"
+#include "buddy.hpp"
 
 #include <string>
 
@@ -102,6 +103,16 @@ std::string crown_right_shell_text(const PoseState& pose) {
 
 int body_row_lean_offset(const PoseState& pose, int body_row_index) {
     if (pose.body_width != BodyWidthProfile::Narrow) {
+        return 0;
+    }
+
+    if (pose.appearance.movement_phase == MovementPhase::TurningPause) {
+        if (pose.appearance.facing == Facing::Left) {
+            return (body_row_index <= 1) ? -1 : 0;
+        }
+        if (pose.appearance.facing == Facing::Right) {
+            return (body_row_index <= 1) ? 1 : 0;
+        }
         return 0;
     }
 
@@ -214,7 +225,13 @@ EyePlacement resolve_eye_placement(const PoseState& pose, int body_row) {
         eyes.left_col = face_x + 2;
         eyes.right_col = face_x + 7;
     } else {
-        if (pose.appearance.facing == Facing::Left) {
+        if (pose.appearance.movement_phase == MovementPhase::TurningPause && pose.appearance.facing == Facing::Left) {
+            eyes.left_col = face_x + 1;
+            eyes.right_col = face_x + 3;
+        } else if (pose.appearance.movement_phase == MovementPhase::TurningPause && pose.appearance.facing == Facing::Right) {
+            eyes.left_col = face_x + 4;
+            eyes.right_col = face_x + 6;
+        } else if (pose.appearance.facing == Facing::Left) {
             eyes.left_col = face_x + 1;
             eyes.right_col = face_x + 4;
         } else if (pose.appearance.facing == Facing::Right) {

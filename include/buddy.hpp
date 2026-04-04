@@ -41,7 +41,8 @@ enum class CapVariant {
 
 enum class BodyPose {
     Neutral,
-    WallPause
+    WallPause,
+    Turning
 };
 
 enum class Stance {
@@ -78,7 +79,8 @@ enum class MovementBurstKind {
 enum class MovementPhase {
     IdlePause,
     WalkingBurst,
-    WallPause
+    WallPause,
+    TurningPause
 };
 
 
@@ -92,6 +94,8 @@ struct MovementState {
     std::size_t walk_frame_index = 0;
     int burst_steps_remaining = 0;
     MovementBurstKind burst_kind = MovementBurstKind::None;
+    int pending_direction = 0;
+    bool resume_walk_after_turn = false;
 };
 
 struct AppearanceState {
@@ -196,6 +200,7 @@ private:
     int random_walk_direction();
     double random_idle_duration();
     double random_wall_pause_duration();
+    double random_turn_pause_duration();
     double random_time_until_next_look();
     double random_look_duration();
     double random_time_until_next_wobble();
@@ -208,7 +213,8 @@ private:
     bool should_turn_around_early();
     void start_idle_pause();
     void start_walk_burst();
-    void start_wall_pause();
+    void start_wall_pause(int new_direction);
+    void start_turn_pause(int new_direction, bool resume_walk_after_turn);
     void clamp_stats();
 
 private:
