@@ -19,6 +19,7 @@ constexpr const char* red     = "\033[31m";
 constexpr const char* green   = "\033[32m";
 constexpr const char* cyan    = "\033[36m";
 constexpr const char* magenta = "\033[35m";
+constexpr const char* blue    = "\033[34m";
 } // namespace ansi
 
 std::string fit_text(const std::string& text, int width = kInnerWidth) {
@@ -63,6 +64,9 @@ const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.activity == Activity::Eating) {
         return ansi::green;
     }
+    if (buddy.appearance.movement_phase == MovementPhase::WallPause) {
+        return ansi::blue;
+    }
     if (buddy.appearance.expression == Expression::Sad) {
         return ansi::red;
     }
@@ -83,7 +87,7 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
     if (cell.role == SpriteLayerRole::Effect) {
         return ansi::magenta;
     }
-    if (cell.role == SpriteLayerRole::Cap) {
+    if (cell.role == SpriteLayerRole::CapCrown || cell.role == SpriteLayerRole::CapBrim) {
         return state_accent_color(buddy);
     }
     if (cell.role == SpriteLayerRole::Eyes) {

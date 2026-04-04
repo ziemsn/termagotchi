@@ -56,7 +56,8 @@ enum class BodyWidthProfile {
 
 enum class SpriteLayerRole {
     None,
-    Cap,
+    CapCrown,
+    CapBrim,
     Eyes,
     Body,
     Feet,
@@ -119,7 +120,7 @@ struct PoseState {
 
     int top_padding_rows = 0;
     bool has_feet = false;
-    std::size_t feet_Frame_index = 0;
+    std::size_t feet_frame_index = 0;
 };
 
 enum class Command {
