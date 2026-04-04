@@ -9,6 +9,7 @@ add_executable(termagotchi
     src/main.cpp
     src/buddy.cpp
     src/render.cpp
+    src/sprite_compositor.cpp
 )
 
 target_include_directories(termagotchi PRIVATE include)
