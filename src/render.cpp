@@ -13,7 +13,7 @@
 
 namespace {
 
-constexpr int kInnerWidth = 37;
+constexpr int kInnerWidth = 70;
 constexpr int kStageHeight = 14;
 
 namespace ansi {
@@ -97,6 +97,9 @@ const char* state_accent_color(const BuddyRenderState& buddy) {
     }
     if (buddy.appearance.activity == Activity::Eating) {
         return ansi::green;
+    }
+    if (buddy.appearance.activity == Activity::Comforting) {
+        return ansi::magenta;
     }
     if (buddy.appearance.expression == Expression::Sad) {
         return ansi::red;

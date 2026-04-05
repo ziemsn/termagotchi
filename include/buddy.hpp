@@ -9,7 +9,8 @@ enum class Activity {
     Idle,
     Walking,
     Sleeping,
-    Eating
+    Eating,
+    Comforting
 };
 
 enum class Expression {
@@ -195,14 +196,10 @@ private:
     PoseState make_pose_state(const AppearanceState& appearance) const noexcept;
     ComposedSprite compose_sprite(const PoseState& pose) const;
     std::vector<std::string> flatten_sprite(const ComposedSprite& sprite) const;
+    int frame_left_padding(const std::vector<std::string>& frame) const noexcept;
+    int frame_right_padding(const std::vector<std::string>& frame) const noexcept;
     int frame_width(const std::vector<std::string>& frame) const noexcept;
     AppearanceState make_appearance_state() const noexcept;
-    /* std::vector<std::string> resolve_appearance_frame(const AppearanceState& appearance) const; */
-    /* std::vector<std::string> resolve_body_frame(const AppearanceState& appearance) const; */
-    /* std::vector<std::string> resolve_idle_frame(const AppearanceState& appearance) const; */
-    /* std::vector<std::string> resolve_walking_frame(const AppearanceState& appearance) const; */
-    /* std::vector<std::string> resolve_effect_frame(const AppearanceState& appearance) const; */
-    /* std::vector<std::string> resolve_wall_pause_frame(const AppearanceState& appearance) const; */
     std::vector<std::string> current_frame() const;
     std::string mood_text() const;
     int random_walk_direction();
@@ -240,10 +237,13 @@ private:
    CapVariant cap_variant_ = CapVariant::Primary;
    bool running_ = true;
    bool sleeping_requested_ = false;
+   bool eating_requested_ = true;
+   bool comfort_requested_ = true;
 
    double age_seconds_ = 0.0;
    double animation_timer_ = 0.0;
    double time_until_next_blink_ = 4.0;
+   double comforting_timer_ = 0.0;
    double blink_duration_remaining_ = 0.0;
    double time_until_next_look_ = 0.0;
    double look_duration_remaining_ = 0.0;
@@ -267,14 +267,19 @@ private:
    static constexpr double kWobbleFrameInterval_ = 0.5;
    static constexpr int kSparkleSequenceLength_ = 4;
    static constexpr double kWallSquishPauseDuration_ = 0.65;
-   static constexpr int kWalkMinX_ = 0;
-   static constexpr int kRenderInnerWidth_ = 37;
+   static constexpr int kVisibleWallGap_ = -1;
+   static constexpr int kRenderInnerWidth_ = 70;
    static constexpr double kEarlyTurnProbability_ = 0.10;
    static constexpr double kShouldStartShortShuffle_ = 0.4;
-   static constexpr double kAutoEatHungerThreshold_ = 80.0;
+   static constexpr double kAutoEatHungerThreshold_ = 85.0;
+   static constexpr double kAutoEatRecoveredThreshold_ = 35.0;
    static constexpr double kAutoEatHungerReduction_ = 20.0;
    static constexpr double kAutoEatHappinessBoost_ = 5.0;
    static constexpr double kAutoEatDurationSeconds_ = 1.0;
    static constexpr double kAutoSleepEnergyThreshold_ = 15.0;
+   static constexpr double kAutoComfortHappinessThreshold_ = 20.0;
+   static constexpr double kAutoComfortRecoveredThreshold_ = 55.0;
+   static constexpr double kAutoComfortHappinessBoost_ = 12.0;
+   static constexpr double kAutoComfortDurationSeconds_ = 1.2;
 
 };

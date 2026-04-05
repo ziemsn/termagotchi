@@ -59,7 +59,7 @@ void Buddy::apply_command(Command cmd) {
         stats_.hunger -= kAutoEatHungerReduction_;
         stats_.happiness += kAutoEatHappinessBoost_;
         activity_ = Activity::Eating;
-        action_timer_ = kAutoEatHungerThreshold_;
+        action_timer_ = kAutoEatDurationSeconds_;
         break;
 
     case Command::Pet:
@@ -157,7 +157,13 @@ PoseState Buddy::make_pose_state(const AppearanceState& appearance) const noexce
     PoseState pose;
     pose.appearance = appearance;
 
-    if (appearance.activity == Activity::Walking) {
+    if (appearance.activity == Activity::Sleeping || appearance.activity == Activity::Eating) {
+        pose.stance = Stance::Sitting;
+        pose.body_width = BodyWidthProfile::Full;
+        pose.top_padding_rows = appearance.idle_top_padding_rows;
+        pose.has_feet = false;
+        pose.feet_frame_index = 0;
+    } else if (appearance.activity == Activity::Walking) {
         pose.stance = Stance::Standing;
         pose.body_width = BodyWidthProfile::Narrow;
         pose.top_padding_rows = 0;
@@ -235,7 +241,7 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
         appearance.cap_variant = cap_variant_;
     }
 
-    if (movement_.phase == MovementPhase::WallSquishPause) {
+    if (movement_.phase == MovementPhase::WallSquishPause && activity_ != Activity::Sleeping && activity_ != Activity::Eating) {
         appearance.body_pose = BodyPose::WallPause;
     }
 
@@ -271,6 +277,9 @@ std::string Buddy::mood_text() const {
     }
     if (activity_ == Activity::Eating) {
         return "Eating";
+    }
+    if (activity_ == Activity::Comforting) {
+        return "Cheering Up";
     }
     if (movement_.phase == MovementPhase::WallSquishPause) {
         return "Squishing";
@@ -323,6 +332,13 @@ void Buddy::tick_action_timers(double dt_seconds) {
             action_timer_ = 0.0;
         }
     }
+
+    if (comforting_timer_ > 0.0) {
+        comforting_timer_ -= dt_seconds;
+        if (comforting_timer_ < 0.0) {
+            comforting_timer_ = 0.0;
+        }
+    }
 }
 
 void Buddy::resolve_activity() {
@@ -336,17 +352,49 @@ void Buddy::resolve_activity() {
 
     const bool should_auto_sleep = sleeping_requested_;
 
-    if (action_timer_ <= 0.0 && !should_auto_sleep && stats_.hunger >= kAutoEatHungerThreshold_) {
+    if (stats_.hunger >= kAutoEatHungerThreshold_) {
+        eating_requested_ = true;
+    }
+    if (eating_requested_ && stats_.hunger <= kAutoEatRecoveredThreshold_) {
+        eating_requested_ = false;
+    }
+
+    if (stats_.happiness < kAutoComfortHappinessThreshold_) {
+        comfort_requested_ = true;
+    }
+    if (comfort_requested_ && stats_.happiness >= kAutoComfortRecoveredThreshold_) {
+        comfort_requested_ = false;
+    }
+
+    if (action_timer_ <= 0.0 && !should_auto_sleep && comforting_timer_ <= 0.0 && eating_requested_) {
         stats_.hunger -= kAutoEatHungerReduction_;
         stats_.happiness += kAutoEatHappinessBoost_;
         clamp_stats();
         action_timer_ = kAutoEatDurationSeconds_;
     }
+
+    if (action_timer_ <= 0.0 && comforting_timer_ <= 0.0 && !should_auto_sleep && !eating_requested_ && comfort_requested_) {
+        stats_.happiness += kAutoComfortHappinessBoost_;
+        blush_duration_remaining_ = std::max(blush_duration_remaining_, 4.0);
+        time_until_next_look_ = 0.0;
+        look_duration_remaining_ = 0.0;
+        eye_direction_ = EyeDirection::Center;
+        clamp_stats();
+        comforting_timer_ = kAutoComfortDurationSeconds_;
+    }
     
     if (action_timer_ > 0.0) {
+        if (movement_.phase != MovementPhase::IdlePause) {
+            start_idle_pause();
+        }
         activity_ = Activity::Eating;
     } else if (should_auto_sleep) {
+        if (movement_.phase != MovementPhase::IdlePause) {
+            start_idle_pause();
+        }
         activity_ = Activity::Sleeping;
+    } else if (comforting_timer_ > 0.0) {
+        activity_ = Activity::Comforting;
     } else if (movement_.phase == MovementPhase::WalkingBurst) {
         activity_ = Activity::Walking;
     } else {
@@ -370,7 +418,7 @@ void Buddy::update_expression(double dt_seconds) {
         }
     }
     
-    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating) {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Comforting) {
         expression_ = Expression::Neutral;
     } else if (stats_.hunger > 85.0 || stats_.happiness < 20.0) {
         expression_ = Expression::Sad;
@@ -386,12 +434,16 @@ void Buddy::update_expression(double dt_seconds) {
 }
 
 void Buddy::update_movement(double dt_seconds) {
-    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating) {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Comforting) {
         return;
     }
 
-    const int sprite_width = body_frame_width();
-    const int walk_max_x = std::max(kWalkMinX_, kRenderInnerWidth_ - sprite_width);
+    const std::vector<std::string> frame = current_frame();
+    const int sprite_width = frame_width(frame);
+    const int sprite_left_padding = frame_left_padding(frame);
+    const int sprite_right_padding = frame_right_padding(frame);
+    const int walk_min_x = kVisibleWallGap_ - sprite_left_padding;
+    const int walk_max_x = std::max(walk_min_x, kRenderInnerWidth_ - sprite_width + sprite_right_padding - kVisibleWallGap_);
 
     if (movement_.phase == MovementPhase::IdlePause) {
         movement_.phase_timer -= dt_seconds;
@@ -444,7 +496,7 @@ void Buddy::update_movement(double dt_seconds) {
 
         if (movement_.burst_kind == MovementBurstKind::LongWalk &&
                 movement_.burst_steps_remaining > 2 &&
-                movement_.x_position > (kWalkMinX_ + 2) &&
+                movement_.x_position > (walk_min_x + 2) &&
                 movement_.x_position < (walk_max_x - 2) &&
                 movement_.steps_until_random_turn <= 0 &&
                 should_turn_around_early()) {
@@ -466,8 +518,8 @@ void Buddy::update_movement(double dt_seconds) {
                 start_idle_pause();
             }
             break;
-        } else if (movement_.x_position <= kWalkMinX_) {
-            movement_.x_position = kWalkMinX_;
+        } else if (movement_.x_position <= walk_min_x) {
+            movement_.x_position = walk_min_x;
             if (movement_.burst_steps_remaining > 0) {
                 start_wall_squish_pause(1, true);
             } else {
@@ -484,7 +536,7 @@ void Buddy::update_movement(double dt_seconds) {
 }
 
 void Buddy::update_effects(double dt_seconds) {
-    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking || 
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Comforting || activity_ == Activity::Walking || 
             movement_.phase == MovementPhase::TurningPause || movement_.phase == MovementPhase::WallSquishPause) {
         sparkle_steps_remaining_ = 0;
         sparkle_animation_timer_ = 0.0;
@@ -640,8 +692,50 @@ void Buddy::update_micro_appearance(double dt_seconds) {
     }
 }
 
+int Buddy::frame_left_padding(const std::vector<std::string>& frame) const noexcept {
+    bool found_glpyh = false;
+    int min_col = 0;
+
+    for (const auto& row : frame) {
+        for (std::size_t col = 0; col < row.size(); ++col) {
+            if (row[col] == ' ') {
+                continue;
+            }
+            const int col_value = static_cast<int>(col);
+            if (!found_glpyh || col_value < min_col) {
+                min_col = col_value;
+                found_glpyh = true;
+            }
+        }
+    }
+
+    return found_glpyh ? min_col : 0;
+}
+
+int Buddy::frame_right_padding(const std::vector<std::string>& frame) const noexcept {
+    const int width = frame_width(frame);
+    bool found_glpyh = false;
+    int max_col = -1;
+
+    for (const auto& row : frame) {
+        for (std::size_t col = 0; col < row.size(); ++col) {
+            if (row[col] == ' ') {
+                continue;
+            }
+            const int col_value = static_cast<int>(col);
+            if (!found_glpyh || col_value > max_col) {
+                max_col = col_value;
+                found_glpyh = true;
+            }
+        }
+    }
+
+    return found_glpyh ? (width - 1 - max_col) : 0;
+}
+
 int Buddy::body_frame_width() const noexcept {
-    return frame_width(flatten_sprite(compose_sprite(make_pose_state(make_appearance_state()))));
+    const std::vector<std::string> frame = current_frame();
+    return std::max(0, frame_width(frame) - frame_left_padding(frame) - frame_right_padding(frame));
 }
 
 int Buddy::frame_width(const std::vector<std::string>& frame) const noexcept {
@@ -785,11 +879,17 @@ void Buddy::start_walk_burst() {
     movement_.resume_walk_after_turn = false;
     movement_.steps_until_random_turn = 0;
 
-    if (movement_.x_position <= kWalkMinX_) {
+    const std::vector<std::string> frame = current_frame();
+    const int sprite_width = frame_width(frame);
+    const int sprite_left_padding = frame_left_padding(frame);
+    const int sprite_right_padding = frame_right_padding(frame);
+    const int walk_min_x = kVisibleWallGap_ - sprite_left_padding;
+    const int walk_max_x = std::max(walk_min_x, kRenderInnerWidth_ - sprite_width + sprite_right_padding - kVisibleWallGap_);
+    
+
+    if (movement_.x_position <= walk_min_x) {
         movement_.direction = 1;
     } else {
-        const int sprite_width = body_frame_width();
-        const int walk_max_x = std::max(kWalkMinX_, kRenderInnerWidth_ - sprite_width);
         if (movement_.x_position >= walk_max_x) {
             movement_.direction = -1;
         }
