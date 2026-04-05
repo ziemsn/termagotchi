@@ -21,6 +21,7 @@ std::string make_stat_line(const std::string& label, double value) {
     return label + make_bar(value);
 }
 
+
 } // namespace
 
 Buddy::Buddy(std::string name) : name_(std::move(name)), rng_(std::random_device{}()) {
@@ -162,6 +163,12 @@ PoseState Buddy::make_pose_state(const AppearanceState& appearance) const noexce
         pose.top_padding_rows = 0;
         pose.has_feet = true;
         pose.feet_frame_index = appearance.walk_frame_index;
+    } else if (appearance.movement_phase == MovementPhase::WallSquishPause) {
+        pose.stance = Stance::Standing;
+        pose.body_width = BodyWidthProfile::Narrow;
+        pose.top_padding_rows = 0;
+        pose.has_feet = true;
+        pose.feet_frame_index = appearance.walk_frame_index;
     } else if (appearance.movement_phase == MovementPhase::TurningPause) {
         pose.stance = Stance::Standing;
         pose.body_width = BodyWidthProfile::Full;
@@ -217,10 +224,14 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
     appearance.idle_top_padding_rows = 1;
     appearance.blush_visible = (blush_duration_remaining_ > 0.0) && activity_ != Activity::Sleeping && activity_ != Activity::Eating;
     
-    if (activity_ == Activity::Walking) {
+    if (activity_ == Activity::Walking || movement_.phase == MovementPhase::WallSquishPause) {
         appearance.cap_variant = (movement_.walk_frame_index == 0) ? CapVariant::Primary : CapVariant::Alternate;
     } else {
         appearance.cap_variant = cap_variant_;
+    }
+
+    if (movement_.phase == MovementPhase::WallSquishPause) {
+        appearance.body_pose = BodyPose::WallPause;
     }
 
     const bool should_idle_breath = activity_ == Activity::Idle && movement_.phase == MovementPhase::IdlePause && effect_ == Effect::None;
@@ -255,6 +266,9 @@ std::string Buddy::mood_text() const {
     }
     if (activity_ == Activity::Eating) {
         return "Eating";
+    }
+    if (movement_.phase == MovementPhase::WallSquishPause) {
+        return "Squishing";
     }
     if (movement_.phase == MovementPhase::TurningPause) {
         return "Turning";
@@ -381,6 +395,18 @@ void Buddy::update_movement(double dt_seconds) {
         } else {
             return;
         }
+    } else if (movement_.phase == MovementPhase::WallSquishPause) {
+        movement_.phase_timer -= dt_seconds;
+        movement_.move_step_timer += dt_seconds;
+
+        while (movement_.move_step_timer >= kMoveStepInterval_) {
+            movement_.move_step_timer -= kMoveStepInterval_;
+            movement_.walk_frame_index = (movement_.walk_frame_index + 1) % 2;
+        }
+        if (movement_.phase_timer <= 0.0) {
+            start_turn_pause(movement_.pending_direction, movement_.resume_walk_after_turn);
+        }
+        return;
     } else if (movement_.phase == MovementPhase::TurningPause) {
         movement_.phase_timer -= dt_seconds;
         movement_.move_step_timer += dt_seconds;
@@ -430,7 +456,7 @@ void Buddy::update_movement(double dt_seconds) {
         if (movement_.x_position >= walk_max_x) {
             movement_.x_position = walk_max_x;
             if (movement_.burst_steps_remaining > 0) {
-                start_turn_pause(-1, true);
+                start_wall_squish_pause(-1, true);
             } else {
                 start_idle_pause();
             }
@@ -438,7 +464,7 @@ void Buddy::update_movement(double dt_seconds) {
         } else if (movement_.x_position <= kWalkMinX_) {
             movement_.x_position = kWalkMinX_;
             if (movement_.burst_steps_remaining > 0) {
-                start_turn_pause(1, true);
+                start_wall_squish_pause(1, true);
             } else {
                 start_idle_pause();
             }
@@ -453,7 +479,8 @@ void Buddy::update_movement(double dt_seconds) {
 }
 
 void Buddy::update_effects(double dt_seconds) {
-    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking || movement_.phase == MovementPhase::TurningPause) {
+    if (activity_ == Activity::Sleeping || activity_ == Activity::Eating || activity_ == Activity::Walking || 
+            movement_.phase == MovementPhase::TurningPause || movement_.phase == MovementPhase::WallSquishPause) {
         sparkle_steps_remaining_ = 0;
         sparkle_animation_timer_ = 0.0;
         effect_ = Effect::None;
@@ -536,7 +563,7 @@ void Buddy::update_micro_appearance(double dt_seconds) {
         return;
     }
 
-    if (movement_.phase == MovementPhase::TurningPause) {
+    if (movement_.phase == MovementPhase::WallSquishPause || movement_.phase == MovementPhase::TurningPause) {
         eye_direction_ = EyeDirection::Center;
         cap_variant_ = CapVariant::Primary;
         look_duration_remaining_ = 0.0;
@@ -730,6 +757,18 @@ void Buddy::start_turn_pause(int next_direction, bool resume_walk_after_turn) {
     movement_.resume_walk_after_turn = resume_walk_after_turn;
     movement_.steps_until_random_turn = 0;
     facing_ = Facing::Forward;
+}
+
+void Buddy::start_wall_squish_pause(int next_direction, bool resume_walk_after_turn) {
+    movement_.phase = MovementPhase::WallSquishPause;
+    movement_.phase_timer  = kWallSquishPauseDuration_;
+    movement_.move_step_timer = 0.0;
+    movement_.pending_direction = next_direction;
+    movement_.resume_walk_after_turn = resume_walk_after_turn;
+    movement_.steps_until_random_turn = 0;
+
+    movement_.walk_frame_index = 0;
+    facing_ = (movement_.direction < 0) ? Facing::Left : Facing::Right;
 }
 
 void Buddy::start_walk_burst() {

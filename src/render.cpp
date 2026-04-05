@@ -54,6 +54,9 @@ const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.body_pose == BodyPose::BreathingOut) {
         return ansi::cyan;
     }
+    if (buddy.appearance.movement_phase == MovementPhase::WallSquishPause) {
+        return ansi::magenta;
+    }
     if (buddy.appearance.movement_phase == MovementPhase::TurningPause) {
         return ansi::cyan;
     }

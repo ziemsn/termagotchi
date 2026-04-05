@@ -83,6 +83,7 @@ enum class MovementBurstKind {
 enum class MovementPhase {
     IdlePause,
     WalkingBurst,
+    WallSquishPause,
     TurningPause
 };
 
@@ -222,6 +223,7 @@ private:
     bool should_turn_around_early();
     void start_idle_pause();
     void start_walk_burst();
+    void start_wall_squish_pause(int new_direction, bool resume_walk_after_turn);
     void start_turn_pause(int new_direction, bool resume_walk_after_turn);
     void clamp_stats();
 
@@ -263,6 +265,7 @@ private:
    static constexpr double kSparkleFrameInterval_ = 0.4;
    static constexpr double kWobbleFrameInterval_ = 0.5;
    static constexpr int kSparkleSequenceLength_ = 4;
+   static constexpr double kWallSquishPauseDuration_ = 0.5;
    static constexpr int kWalkMinX_ = 0;
    static constexpr int kRenderInnerWidth_ = 37;
    static constexpr double kEarlyTurnProbability_ = 0.10;

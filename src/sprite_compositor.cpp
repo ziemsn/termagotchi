@@ -20,6 +20,10 @@ bool is_turn_pose(const PoseState& pose) {
     return pose.appearance.movement_phase == MovementPhase::TurningPause;
 }
 
+bool is_wall_pause_pose(const PoseState& pose) {
+    return pose.appearance.body_pose == BodyPose::WallPause;
+}
+
 void put_sprite_cell(ComposedSprite& sprite, int row, int col, char glyph, SpriteLayerRole role) {
     if (glyph == ' ') {
         return;
@@ -43,8 +47,11 @@ void draw_blush(ComposedSprite& sprite, const PoseState& pose, int cheek_row, in
 
     int left_cheek_col = 0;
     int right_cheek_col = 0;
-
-    if (pose.body_width == BodyWidthProfile::Full) {
+    
+    if (pose.appearance.body_pose == BodyPose::WallPause) {
+        left_cheek_col = face_x + 1;
+        right_cheek_col = face_x + 4;
+    } else if (pose.body_width == BodyWidthProfile::Full) {
         left_cheek_col = face_x + 1;
         right_cheek_col = face_x + 8;
     } else if (pose.appearance.facing == Facing::Right) {
@@ -123,14 +130,26 @@ int body_anchor_x(const PoseState& pose) {
 }
 
 int body_width_columns(const PoseState& pose) {
+    if (is_wall_pause_pose(pose)) {
+        return 6;
+    }
+
     return (pose.body_width == BodyWidthProfile::Full) ? 10 : 8;
 }
 
 int crown_width_chars(const PoseState& pose) {
+    if (is_wall_pause_pose(pose)) {
+        return 6;
+    }
+
     return (pose.body_width == BodyWidthProfile::Full) ? 10 : 9;
 }
 
 int brim_inner_width_chars(const PoseState& pose) {
+    if (is_wall_pause_pose(pose)) {
+        return 6;
+    }
+
     return (pose.body_width == BodyWidthProfile::Full) ? 12 : 10;
 }
 
@@ -144,20 +163,45 @@ int centered_left_col(int anchor_x, int anchor_width, int part_width) {
 }
 
 std::string crown_left_shell_text(const PoseState& pose) {
-    (void)pose;
+    if (is_wall_pause_pose(pose)) {
+        return ".";
+    }
+
     return ".-";
 }
 
 std::string crown_spot_text(const PoseState& pose) {
+    if (is_wall_pause_pose(pose)) {
+        return (pose.appearance.cap_variant == CapVariant::Alternate) ? "-oo-" : "-OO-";
+    }
+
     return (pose.appearance.cap_variant == CapVariant::Alternate) ? "O-oo-O" : "o-OO-o";
 }
 
 std::string crown_right_shell_text(const PoseState& pose) {
+    if (is_wall_pause_pose(pose)) {
+        return ".";
+    }
+
     return (pose.body_width == BodyWidthProfile::Full) ? "-." : ".";
 }
 
 int body_row_lean_offset(const PoseState& pose, int body_row_index) {
-    (void)body_row_index;
+    if (pose.appearance.body_pose == BodyPose::WallPause) {
+        (void)body_row_index;
+        if (pose.appearance.facing == Facing::Left) {
+            /* if (body_row_index == 0) return -2; */
+            /* if (body_row_index == 1) return -1; */
+            return 0;
+        }
+        if (pose.appearance.facing == Facing::Right) {
+            /* if (body_row_index == 0) return 2; */
+            /* if (body_row_index == 1) return 1; */
+            return 2;
+        }
+
+        return 0;
+    }
 
     if (pose.body_width != BodyWidthProfile::Narrow) {
         return 0;
@@ -190,7 +234,7 @@ int crown_left_col(const PoseState& pose, int cap_anchor_x_value) {
     );
 
     if (pose.body_width == BodyWidthProfile::Narrow &&
-            pose.appearance.facing == Facing::Right) {
+            pose.appearance.facing == Facing::Right && !is_wall_pause_pose(pose)) {
         x += 1;
     }
     return x;
@@ -266,7 +310,12 @@ EyePlacement resolve_eye_placement(const PoseState& pose, int body_row) {
     const int body_x = body_anchor_x(pose);
     const int face_x = body_x + body_row_lean_offset(pose, 0);
 
-    if (is_turn_pose(pose)) {
+    if (pose.appearance.body_pose == BodyPose::WallPause) {
+        eyes.left_col = face_x + 1;
+        eyes.right_col = face_x + 4;
+        eyes.row = body_row;
+    }
+    else if (is_turn_pose(pose)) {
         eyes.left_col = face_x + 3;
         eyes.right_col = face_x + 6;
         eyes.row = body_row;
@@ -305,15 +354,26 @@ void draw_eyes(ComposedSprite& sprite, const EyePlacement& eyes) {
 }
 
 std::string body_wall_row(const PoseState& pose) {
+    if (pose.appearance.body_pose == BodyPose::WallPause) {
+        return "|    |";
+    }
     return (pose.body_width == BodyWidthProfile::Full) ? "|        |" : "|      |";
 }
 
+
 std::string body_base_row(const PoseState& pose) {
+    if (pose.appearance.body_pose == BodyPose::WallPause) {
+        return "|____|";
+    }
     return (pose.body_width == BodyWidthProfile::Full) ? "|________|" : "|______|";
 }
 
 std::string feet_row_text(const PoseState& pose) {
     const bool primary_phase = (pose.feet_frame_index % 2 == 0);
+
+    if (is_wall_pause_pose(pose)) {
+        return primary_phase ? "\\/\\/" : "/\\/\\";
+    }
 
     if (pose.body_width == BodyWidthProfile::Full) {
         return primary_phase ? "\\/\\\\/" : "/\\\\/\\\\";
@@ -348,6 +408,10 @@ int leading_space_count(const std::string& text) {
 int feet_left_col(const PoseState& pose, int body_anchor_x_value, const std::string& trimmed_feet) {
     const int leading_spaces = leading_space_count(trimmed_feet);
     int x = centered_left_col(body_anchor_x_value, body_width_columns(pose), static_cast<int>(trimmed_feet.size())) - leading_spaces;
+
+    if (is_wall_pause_pose(pose)) {
+        return x;
+    }
 
     if (pose.body_width == BodyWidthProfile::Narrow &&
             pose.appearance.facing == Facing::Right) {
@@ -428,7 +492,7 @@ ComposedSprite compose(const PoseState& pose) {
     overlay_part(composed, body_base_row_y, body_base_x, body_base_row(pose), SpriteLayerRole::Body);
     draw_eyes(composed, eyes);
     if (pose.has_feet) {
-        draw_feet(composed, pose, body_row + 3, body_x);
+        draw_feet(composed, pose, body_row + 3, body_base_x);
     }
     apply_overlays(composed, pose, crown_row, crown_x, cheek_row, cheek_x);
 
