@@ -1,19 +1,20 @@
 #include "render.hpp"
 #include "buddy.hpp"
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <ctime>
-#include <memory>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
 constexpr int kInnerWidth = 37;
-constexpr int kStageHeight = 10;
+constexpr int kStageHeight = 14;
 
 namespace ansi {
 constexpr const char* reset   = "\033[0m";
@@ -24,6 +25,7 @@ constexpr const char* green   = "\033[32m";
 constexpr const char* cyan    = "\033[36m";
 constexpr const char* magenta = "\033[35m";
 constexpr const char* blue    = "\033[34m";
+constexpr const char* bright_white = "\033[97m";
 } // namespace ansi
 
 std::string fit_text(const std::string& text, int width = kInnerWidth) {
@@ -53,6 +55,25 @@ struct SkyProp {
     int col = 0;
     char glyph = ' ';
     SpriteLayerRole role = SpriteLayerRole::None;
+};
+
+struct StarPoint {
+    int row = 0;
+    int col = 0;
+    char glyph = '.';
+};
+
+struct CloudSprite {
+    int row = 0;
+    int col = 0;
+    std::vector<std::string> rows;
+};
+
+struct SkySnapshot {
+    bool daytime = true;
+    SkyProp prop;
+    std::vector<StarPoint> stars;
+    std::vector<CloudSprite> clouds;
 };
 
 const char* state_accent_color(const BuddyRenderState& buddy) {
@@ -96,9 +117,15 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
     if (cell.role == SpriteLayerRole::Prop) {
         if (cell.glyph == 'O') return ansi::yellow;
         if (cell.glyph == 'C') return ansi::cyan;
+        if (cell.glyph == '*' || cell.glyph == '+' || cell.glyph == '.') {
+            return ansi::bright_white;
+        }
         return ansi::reset;
     }
     if (cell.role == SpriteLayerRole::Effect) {
+        if (buddy.appearance.activity == Activity::Sleeping) {
+            return ansi::cyan;
+        }
         return ansi::magenta;
     }
     if (cell.role == SpriteLayerRole::Blush) {
@@ -120,18 +147,55 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
     return ansi::yellow;
 }
 
-double current_local_hour() {
+void put_stage_cell(std::vector<StageRow>& stage, int row, int col, char glyph, SpriteLayerRole role) {
+    if (glyph == ' ') return;
+
+    if (row < 0 || row >= static_cast<int>(stage.size())) return;
+
+    if (col < 0 || col >= static_cast<int>(stage[static_cast<std::size_t>(row)].size())) return;
+
+    stage[static_cast<std::size_t>(row)][static_cast<std::size_t>(col)] = SpriteCell{glyph, role};
+}
+
+void overlay_stage_text(std::vector<StageRow>& stage, int row, int col, const std::string& text, SpriteLayerRole role) {
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        put_stage_cell(stage, row, col + static_cast<int>(i), text[i], role);
+    }
+}
+
+int cloud_width(const CloudSprite& cloud) {
+    int width = 0;
+    for (const auto& row : cloud.rows){
+        const int row_width = static_cast<int>(row.size());
+        if (row_width > width) {
+            width = row_width;
+        }
+    }
+    return width;
+}
+
+std::tm current_local_tm() {
     const auto now = std::chrono::system_clock::now();
     const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
     const std::tm* local_tm = std::localtime(&now_time);
 
     if (local_tm == nullptr) {
-        return 12.0;
+        return std::tm{};
     }
 
-    return static_cast<double>(local_tm->tm_hour) + 
-        static_cast<double>(local_tm->tm_min) / 60.0 +
-        static_cast<double>(local_tm->tm_sec) / 3600.0;
+    return *local_tm;
+}
+
+double current_local_hour(const std::tm& local_tm) {
+    return static_cast<double>(local_tm.tm_hour) + 
+        static_cast<double>(local_tm.tm_min) / 60.0 +
+        static_cast<double>(local_tm.tm_sec) / 3600.0;
+}
+
+double seconds_since_midnight(const std::tm& local_tm) {
+    return static_cast<double>(local_tm.tm_hour) * 3600.0 +
+        static_cast<double>(local_tm.tm_min) * 60.0 + 
+        static_cast<double>(local_tm.tm_sec);
 }
 
 bool is_daytime(double hour) {
@@ -150,8 +214,7 @@ double sky_progress_for_hour(double hour) {
     return (hour + 6.0) / 12.0;
 }
 
-SkyProp current_sky_prop() {
-    const double hour = current_local_hour();
+SkyProp current_sky_prop(double hour) {
     const bool daytime = is_daytime(hour);
     const double progress = sky_progress_for_hour(hour);
     const double centered_progress = 2.0 * progress - 1.0;
@@ -170,8 +233,93 @@ SkyProp current_sky_prop() {
     return prop;
 }
 
+std::vector<StarPoint> current_stars() {
+    return {
+        {0,  2, '*'},
+        {0, 10, '.'},
+        {0, 18, '*'},
+        {0, 31, '.'},
+        {1,  6, '.'},
+        {1, 14, '*'},
+        {1, 24, '.'},
+        {1, 34, '*'},
+        {2,  4, '.'},
+        {2, 12, '*'},
+        {2, 21, '.'},
+        {2, 29, '*'},
+        {3,  8, '.'},
+        {3, 17, '*'},
+        {3, 27, '.'}
+    };
+}
+
+CloudSprite make_cloud(int row, double seconds, double speed_chars_per_second, double phase_offset, std::vector<std::string> rows) {
+    CloudSprite cloud;
+    cloud.row = row;
+    cloud.rows = std::move(rows);
+
+    const int width = cloud_width(cloud);
+    const int travel_width = kInnerWidth + width + 10;
+    const double wrapped = std::fmod( seconds * speed_chars_per_second + phase_offset  * static_cast<double>(travel_width), static_cast<double>(travel_width));
+
+    cloud.col = static_cast<int>(std::floor(wrapped)) - width;
+    return cloud;
+}
+
+std::vector<CloudSprite> current_clouds(double seconds) { 
+    std::vector<CloudSprite> clouds;
+    clouds.push_back(make_cloud(0, seconds, 0.28, 0.00, {" _--_ ", "(___ )"}));
+    clouds.push_back(make_cloud(1, seconds, 0.18, 0.38, {"  _--_  ", " (____) "}));
+    clouds.push_back(make_cloud(0, seconds, 0.23, 0.74, {" _-_ ", "(___)"}));
+    return clouds;
+}
+
+SkySnapshot current_sky_snapshot() {
+    const std::tm local_tm = current_local_tm();
+    const double hour = current_local_hour(local_tm);
+    const double seconds = seconds_since_midnight(local_tm);
+
+    SkySnapshot sky;
+    sky.daytime = is_daytime(hour);
+    sky.prop = current_sky_prop(hour);
+
+    if (sky.daytime) {
+        sky.clouds = current_clouds(seconds);
+    } else {
+        sky.stars = current_stars();
+    }
+
+    return sky;
+}
+
 void overlay_sky_prop(std::vector<StageRow>& stage, const SkyProp& prop) {
-    stage[static_cast<std::size_t>(prop.row)][static_cast<std::size_t>(prop.col)] = SpriteCell{prop.glyph, prop.role};
+    put_stage_cell(stage, prop.row, prop.col, prop.glyph, prop.role);
+}
+
+void overlay_stars(std::vector<StageRow>& stage, const std::vector<StarPoint>& stars) {
+    for (const auto& star : stars) {
+        put_stage_cell(stage, star.row, star.col, star.glyph, SpriteLayerRole::Prop);
+    }
+}
+
+void overlay_clouds(std::vector<StageRow>& stage, const std::vector<CloudSprite>& clouds) {
+    for (const auto& cloud : clouds) {
+        for (std::size_t row_index = 0; row_index < cloud.rows.size(); ++row_index) {
+            overlay_stage_text(stage, cloud.row + static_cast<int>(row_index), cloud.col, cloud.rows[row_index], SpriteLayerRole::Prop);
+        }
+    }
+}
+
+void overlay_sky_scene(std::vector<StageRow>& stage) {
+    const SkySnapshot sky = current_sky_snapshot();
+
+    if (sky.daytime) {
+        overlay_sky_prop(stage, sky.prop);
+        overlay_clouds(stage, sky.clouds);
+    } else {
+        overlay_stars(stage, sky.stars);
+        overlay_sky_prop(stage, sky.prop);
+    }
 }
 
 
@@ -201,7 +349,7 @@ std::vector<StageRow> build_stage(const BuddyRenderState& buddy) {
         cell.role = SpriteLayerRole::None;
     }
 
-    overlay_sky_prop(stage, current_sky_prop());
+    overlay_sky_scene(stage);
 
     const int sprite_left = buddy.x_position;
     const int sprite_top = std::max(0, ground_row - static_cast<int>(buddy.sprite.rows.size()));

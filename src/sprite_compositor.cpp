@@ -20,6 +20,10 @@ bool is_turn_pose(const PoseState& pose) {
     return pose.appearance.movement_phase == MovementPhase::TurningPause;
 }
 
+bool is_sleep_pose(const PoseState& pose) {
+    return pose.appearance.activity == Activity::Sleeping;
+}
+
 bool is_wall_pause_pose(const PoseState& pose) {
     return pose.appearance.body_pose == BodyPose::WallPause;
 }
@@ -85,7 +89,7 @@ void overlay_part(ComposedSprite& sprite, int row, int col, const std::string& t
     }
 }
 
-constexpr int kFixedSpriteHeight = 6;
+constexpr int kBaseSpriteHeight = 6;
 
 int body_row_count(const PoseState& pose) { 
     if (pose.has_feet) {
@@ -99,18 +103,17 @@ int body_row_count(const PoseState& pose) {
     return 3;
 }
 
+int sprite_height_for_pose(const PoseState& pose) {
+    return kBaseSpriteHeight + (is_sleep_pose(pose) ? 1 : 0);
+}
+
 int pose_vertical_offset_rows(const PoseState& pose) {
     const int occupied_height = 2 + body_row_count(pose) + (pose.has_feet ? 1 : 0);
-    const int offset = kFixedSpriteHeight - occupied_height;
+    const int offset = sprite_height_for_pose(pose) - occupied_height;
     if (offset < 0) {
         return 0;
     }
     return offset;
-}
-
-int sprite_height_for_pose(const PoseState& pose) {
-    (void)pose;
-    return kFixedSpriteHeight;
 }
 
 int body_anchor_x(const PoseState& pose) {
@@ -460,6 +463,25 @@ void apply_overlays(ComposedSprite& sprite, const PoseState& pose, int crown_row
     }
 }
 
+void overlay_sleep_effect(ComposedSprite& sprite, const PoseState& pose, int crown_row, int crown_x) {
+    if (!is_sleep_pose(pose)) {
+        return;
+    }
+    if (crown_row < 2) {
+        return;
+    }
+
+    const bool primary_phase = (pose.appearance.walk_frame_index % 2 == 0);
+
+    if (primary_phase) {
+        put_sprite_cell(sprite, crown_row - 2, crown_x + 5, 'Z', SpriteLayerRole::Effect);
+        put_sprite_cell(sprite, crown_row - 1, crown_x + 6, 'z', SpriteLayerRole::Effect);
+    } else {
+        put_sprite_cell(sprite, crown_row - 2, crown_x + 6, 'Z', SpriteLayerRole::Effect);
+        put_sprite_cell(sprite, crown_row - 1, crown_x + 5, 'z', SpriteLayerRole::Effect);
+    }
+}
+
 } // namespace
 
 namespace sprite_compositor {
@@ -495,6 +517,7 @@ ComposedSprite compose(const PoseState& pose) {
         draw_feet(composed, pose, body_row + 3, body_base_x);
     }
     apply_overlays(composed, pose, crown_row, crown_x, cheek_row, cheek_x);
+    overlay_sleep_effect(composed, pose, crown_row, crown_x);
 
     return composed;
 }

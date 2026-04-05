@@ -220,6 +220,11 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
     appearance.eye_direction = eye_direction_;
     appearance.walk_frame_index = movement_.walk_frame_index;
     appearance.sparkle_frame_index = sparkle_frame_index_;
+
+    if (activity_ == Activity::Sleeping) {
+        appearance.walk_frame_index = static_cast<std::size_t>(std::fmod(animation_timer_ / 0.45, 2.0));
+    }
+
     appearance.body_pose = BodyPose::Neutral;
     appearance.idle_top_padding_rows = 1;
     appearance.blush_visible = (blush_duration_remaining_ > 0.0) && activity_ != Activity::Sleeping && activity_ != Activity::Eating;
