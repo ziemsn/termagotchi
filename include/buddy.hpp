@@ -66,6 +66,7 @@ enum class SpriteLayerRole {
     Blush,
     Body,
     Feet,
+    Prop,
     Effect
 };
 
@@ -265,7 +266,7 @@ private:
    static constexpr double kSparkleFrameInterval_ = 0.4;
    static constexpr double kWobbleFrameInterval_ = 0.5;
    static constexpr int kSparkleSequenceLength_ = 4;
-   static constexpr double kWallSquishPauseDuration_ = 0.5;
+   static constexpr double kWallSquishPauseDuration_ = 0.65;
    static constexpr int kWalkMinX_ = 0;
    static constexpr int kRenderInnerWidth_ = 37;
    static constexpr double kEarlyTurnProbability_ = 0.10;

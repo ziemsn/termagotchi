@@ -1,6 +1,10 @@
 #include "render.hpp"
 #include "buddy.hpp"
 
+#include <chrono>
+#include <cmath>
+#include <ctime>
+#include <memory>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -44,6 +48,13 @@ void framed_line_colored(const std::string& text, const char* color_code) {
 
 using StageRow = std::vector<SpriteCell>;
 
+struct SkyProp {
+    int row = 0;
+    int col = 0;
+    char glyph = ' ';
+    SpriteLayerRole role = SpriteLayerRole::None;
+};
+
 const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.effect == Effect::Sparkle) {
         return ansi::magenta;
@@ -82,6 +93,11 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
     if (cell.glyph == ' ') {
         return ansi::reset;
     }
+    if (cell.role == SpriteLayerRole::Prop) {
+        if (cell.glyph == 'O') return ansi::yellow;
+        if (cell.glyph == 'C') return ansi::cyan;
+        return ansi::reset;
+    }
     if (cell.role == SpriteLayerRole::Effect) {
         return ansi::magenta;
     }
@@ -103,6 +119,61 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
 
     return ansi::yellow;
 }
+
+double current_local_hour() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    const std::tm* local_tm = std::localtime(&now_time);
+
+    if (local_tm == nullptr) {
+        return 12.0;
+    }
+
+    return static_cast<double>(local_tm->tm_hour) + 
+        static_cast<double>(local_tm->tm_min) / 60.0 +
+        static_cast<double>(local_tm->tm_sec) / 3600.0;
+}
+
+bool is_daytime(double hour) {
+    return hour >= 6.0 && hour < 18.0;
+}
+
+double sky_progress_for_hour(double hour) {
+    if (is_daytime(hour)) {
+        return (hour - 6.0) / 12.0;
+    }
+
+    if (hour >= 18.0) {
+        return (hour - 18.0) / 12.0;
+    }
+
+    return (hour + 6.0) / 12.0;
+}
+
+SkyProp current_sky_prop() {
+    const double hour = current_local_hour();
+    const bool daytime = is_daytime(hour);
+    const double progress = sky_progress_for_hour(hour);
+    const double centered_progress = 2.0 * progress - 1.0;
+    const double arc_height = 1.0 - centered_progress * centered_progress;
+
+    constexpr int kSkyMinCol = 1;
+    constexpr int kSkyMaxCol = kInnerWidth - 2;
+    constexpr int kHorizonRow = 4;
+    constexpr int kZenithRow = 0;
+
+    SkyProp prop;
+    prop.col = kSkyMinCol + static_cast<int>(std::round(progress * (kSkyMaxCol - kSkyMinCol)));
+    prop.row = kHorizonRow - static_cast<int>(std::round(arc_height * (kHorizonRow - kZenithRow)));
+    prop.glyph = daytime ? 'O' : 'C';
+    prop.role = SpriteLayerRole::Prop;
+    return prop;
+}
+
+void overlay_sky_prop(std::vector<StageRow>& stage, const SkyProp& prop) {
+    stage[static_cast<std::size_t>(prop.row)][static_cast<std::size_t>(prop.col)] = SpriteCell{prop.glyph, prop.role};
+}
+
 
 void overlay_sprite(StageRow& stage_row, const SpriteRow& sprite_row, int x_offset) {
     for (std::size_t i = 0; i < sprite_row.size(); ++i) {
@@ -129,6 +200,8 @@ std::vector<StageRow> build_stage(const BuddyRenderState& buddy) {
         cell.glyph = '_';
         cell.role = SpriteLayerRole::None;
     }
+
+    overlay_sky_prop(stage, current_sky_prop());
 
     const int sprite_left = buddy.x_position;
     const int sprite_top = std::max(0, ground_row - static_cast<int>(buddy.sprite.rows.size()));
