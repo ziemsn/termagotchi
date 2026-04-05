@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
@@ -69,12 +70,83 @@ struct CloudSprite {
     std::vector<std::string> rows;
 };
 
+struct CloudTrack { 
+    int row = 0;
+    double speed_chars_per_seconds = 0.0;
+    double phase_offset = 0.0;
+    std::vector<std::string> rows;
+};
+
 struct SkySnapshot {
     bool daytime = true;
     SkyProp prop;
     std::vector<StarPoint> stars;
     std::vector<CloudSprite> clouds;
 };
+
+std::uint32_t mix_bits(std::uint32_t value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return value;
+}
+
+double unit_random(std::uint32_t seed) {
+    return static_cast<double>(mix_bits(seed) & 0x00ffffffu) / static_cast<double>(0x01000000u);
+}
+
+int cloud_width(const CloudSprite& cloud) {
+    int width = 0;
+    for (const auto& row : cloud.rows){
+        const int row_width = static_cast<int>(row.size());
+        if (row_width > width) {
+            width = row_width;
+        }
+    }
+    return width;
+}
+
+int cloud_travel_width(const CloudTrack& track) {
+    CloudSprite cloud;
+    cloud.row = track.row;
+    cloud.col = 0;
+    cloud.rows = track.rows;
+    return kInnerWidth + cloud_width(cloud) + 10;
+}
+
+std::uint32_t cloud_cycle_index(const CloudTrack& track, double seconds) {
+    const int travel_width = cloud_travel_width(track);
+    const double travel = seconds * track.speed_chars_per_seconds + track.phase_offset * static_cast<double>(travel_width);
+
+    return static_cast<std::uint32_t>(
+        std::floor(travel / static_cast<double>(travel_width)));
+}
+
+bool cloud_track_is_active(const CloudTrack& track, std::size_t track_index, double seconds, bool daytime) {
+    const std::uint32_t cycle = cloud_cycle_index(track, seconds);
+    const std::uint32_t seed = 
+        0x51f15e5du ^
+        static_cast<std::uint32_t>(track_index * 977u) ^
+        (cycle * 131u) ^
+        (daytime ? 0x13579bdfu : 0x2468ace0u);
+
+    const double active_threshold = daytime ? 0.62 : 0.38;
+    return unit_random(seed) < active_threshold;
+}
+
+std::size_t fallback_cloud_track_index(double seconds, bool daytime, std::size_t track_count) {
+    const std::uint32_t window = static_cast<std::uint32_t>(seconds / 28.0);
+    const std::uint32_t seed =
+        0x9e3779b9u ^
+        (window * 313u) ^
+        (daytime ? 0x10203040u : 0x55667788u);
+
+    return static_cast<std::size_t>(mix_bits(seed) % static_cast<std::uint32_t>(track_count));
+}
+
+
 
 const char* state_accent_color(const BuddyRenderState& buddy) {
     if (buddy.appearance.effect == Effect::Sparkle) {
@@ -120,9 +192,9 @@ const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& c
     if (cell.role == SpriteLayerRole::Prop) {
         if (cell.glyph == 'O') return ansi::yellow;
         if (cell.glyph == 'C') return ansi::cyan;
-        if (cell.glyph == '*' || cell.glyph == '+' || cell.glyph == '.') {
-            return ansi::bright_white;
-        }
+        if (cell.glyph == '*') return ansi::bright_white;
+        if (cell.glyph == '+') return ansi::reset;
+        if (cell.glyph == '.') return ansi::dim;
         return ansi::reset;
     }
     if (cell.role == SpriteLayerRole::Effect) {
@@ -164,17 +236,6 @@ void overlay_stage_text(std::vector<StageRow>& stage, int row, int col, const st
     for (std::size_t i = 0; i < text.size(); ++i) {
         put_stage_cell(stage, row, col + static_cast<int>(i), text[i], role);
     }
-}
-
-int cloud_width(const CloudSprite& cloud) {
-    int width = 0;
-    for (const auto& row : cloud.rows){
-        const int row_width = static_cast<int>(row.size());
-        if (row_width > width) {
-            width = row_width;
-        }
-    }
-    return width;
 }
 
 std::tm current_local_tm() {
@@ -236,24 +297,64 @@ SkyProp current_sky_prop(double hour) {
     return prop;
 }
 
-std::vector<StarPoint> current_stars() {
-    return {
-        {0,  2, '*'},
-        {0, 10, '.'},
-        {0, 18, '*'},
-        {0, 31, '.'},
-        {1,  6, '.'},
-        {1, 14, '*'},
-        {1, 24, '.'},
-        {1, 34, '*'},
-        {2,  4, '.'},
-        {2, 12, '*'},
-        {2, 21, '.'},
-        {2, 29, '*'},
-        {3,  8, '.'},
-        {3, 17, '*'},
-        {3, 27, '.'}
-    };
+bool star_overlaps_moon(int row, int col, const SkyProp& prop) {
+    if (prop.glyph != 'C') {
+        return false;
+    }
+
+    return std::abs(row - prop.row) <= 1 && std::abs(col - prop.col) <= 3;
+}
+
+bool has_star_at(const std::vector<StarPoint>& stars, int row, int col) {
+    for (const auto& star : stars) {
+        if (star.row == row && star.col == col) {
+            return true;
+        }
+    }
+    return false;
+}
+
+char twinkle_glyph(double phase) {
+    if (phase < 0.16) return ' ';
+    if (phase < 0.42) return '.';
+    if (phase < 0.70) return '+';
+    if (phase < 0.90) return '*';
+    return '+';
+}
+
+std::vector<StarPoint> current_stars(double seconds, const SkyProp& prop) {
+    constexpr int kStarFieldMinRow = 0;
+    constexpr int kStarFieldMaxRow = 4;
+    constexpr int kStarCandidateCount = 34;
+
+    std::vector<StarPoint> stars;
+    stars.reserve(kStarCandidateCount);
+
+    for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(kStarCandidateCount); ++i) {
+        const std::uint32_t base_seed = mix_bits(0x7a4d3c21u ^ (i * 2654435761u));
+        const int row = kStarFieldMinRow + static_cast<int>(mix_bits(base_seed ^ 0x13579bdfu) %
+                static_cast<std::uint32_t>(kStarFieldMaxRow - kStarFieldMinRow + 1));
+        const int col = 1 + static_cast<int>(mix_bits(base_seed ^ 0x2468ace0u) %
+                static_cast<std::uint32_t>(kInnerWidth - 2));
+
+        if (star_overlaps_moon(row, col, prop) || has_star_at(stars, row, col)) {
+            continue;
+        }
+
+        const double twinkle_rate = 0.18 + 4.2 * unit_random(base_seed ^ 0xabcdef01u);
+        const double phase_offset = unit_random(base_seed ^ 0x31415926u);
+        const double phase = std::fmod(seconds * twinkle_rate + phase_offset, 1.0);
+        const char glyph = twinkle_glyph(phase);
+
+        if (glyph == ' ') {
+            continue;
+        }
+
+        stars.push_back(StarPoint{row, col, glyph});
+
+    }
+
+    return stars;
 }
 
 CloudSprite make_cloud(int row, double seconds, double speed_chars_per_second, double phase_offset, std::vector<std::string> rows) {
@@ -269,11 +370,36 @@ CloudSprite make_cloud(int row, double seconds, double speed_chars_per_second, d
     return cloud;
 }
 
-std::vector<CloudSprite> current_clouds(double seconds) { 
+std::vector<CloudSprite> current_clouds(double seconds, bool daytime) { 
+    const std::array<CloudTrack, 6> tracks{{
+        {0, 0.28, 0.00, {" _--_ ",     "(___ )"}},
+        {1, 0.18, 0.38, {"  _--_  ",   " (____) "}},
+        {0, 0.23, 0.74, {" _-_ ",      "(___)"}},
+        {2, 0.15, 0.19, {"   _---_ ",  " _(____)_"}},
+        {1, 0.21, 0.57, {"  _-_  ",    " (___) "}},
+        {0, 0.31, 0.86, {" __--__ ",   "(______)"}} 
+    }};
+
     std::vector<CloudSprite> clouds;
-    clouds.push_back(make_cloud(0, seconds, 0.28, 0.00, {" _--_ ", "(___ )"}));
-    clouds.push_back(make_cloud(1, seconds, 0.18, 0.38, {"  _--_  ", " (____) "}));
-    clouds.push_back(make_cloud(0, seconds, 0.23, 0.74, {" _-_ ", "(___)"}));
+    const std::size_t fallback_index = fallback_cloud_track_index(seconds, daytime, tracks.size());
+    bool any_active = false;
+    
+    for (std::size_t i = 0; i < tracks.size(); ++i) {
+        const bool active = cloud_track_is_active(tracks[i], i, seconds, daytime);
+        if (!active) {
+            continue;
+        }
+
+        const CloudTrack& track = tracks[i];
+        clouds.push_back(make_cloud(track.row, seconds, track.speed_chars_per_seconds, track.phase_offset, track.rows));
+        any_active = true;
+    }
+
+    if (!any_active) {
+        const CloudTrack& track = tracks[fallback_index];
+        clouds.push_back(make_cloud(track.row, seconds, track.speed_chars_per_seconds, track.phase_offset, track.rows));
+    }
+
     return clouds;
 }
 
@@ -285,11 +411,10 @@ SkySnapshot current_sky_snapshot() {
     SkySnapshot sky;
     sky.daytime = is_daytime(hour);
     sky.prop = current_sky_prop(hour);
+    sky.clouds = current_clouds(seconds, sky.daytime);
 
-    if (sky.daytime) {
-        sky.clouds = current_clouds(seconds);
-    } else {
-        sky.stars = current_stars();
+    if (!sky.daytime) {
+        sky.stars = current_stars(seconds, sky.prop);
     }
 
     return sky;
@@ -318,11 +443,11 @@ void overlay_sky_scene(std::vector<StageRow>& stage) {
 
     if (sky.daytime) {
         overlay_sky_prop(stage, sky.prop);
-        overlay_clouds(stage, sky.clouds);
     } else {
         overlay_stars(stage, sky.stars);
         overlay_sky_prop(stage, sky.prop);
     }
+    overlay_clouds(stage, sky.clouds);
 }
 
 
