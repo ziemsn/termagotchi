@@ -119,7 +119,10 @@ struct AppearanceState {
     int idle_top_padding_rows = 1;
     std::size_t walk_frame_index = 0;
     std::size_t sparkle_frame_index = 0;
+    std::size_t blush_pulse_frame_index = 0;
+    std::size_t mouth_frame_index = 0;
 };
+
 using SpriteRow = std::vector<SpriteCell>;
 
 struct ComposedSprite {

@@ -226,6 +226,8 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
     appearance.eye_direction = eye_direction_;
     appearance.walk_frame_index = movement_.walk_frame_index;
     appearance.sparkle_frame_index = sparkle_frame_index_;
+    appearance.blush_pulse_frame_index = 0;
+    appearance.mouth_frame_index = 0;
 
     if (activity_ == Activity::Sleeping) {
         appearance.walk_frame_index = static_cast<std::size_t>(std::fmod(animation_timer_ / 0.45, 2.0));
@@ -233,7 +235,15 @@ AppearanceState Buddy::make_appearance_state() const noexcept {
 
     appearance.body_pose = BodyPose::Neutral;
     appearance.idle_top_padding_rows = 1;
-    appearance.blush_visible = (blush_duration_remaining_ > 0.0) && activity_ != Activity::Sleeping && activity_ != Activity::Eating;
+    appearance.blush_visible = ((blush_duration_remaining_ > 0.0) || activity_ == Activity::Comforting) && activity_ != Activity::Sleeping && activity_ != Activity::Eating;
+
+    if (activity_ == Activity::Comforting) {
+        appearance.blush_pulse_frame_index = static_cast<std::size_t>(std::fmod(animation_timer_ / 0.25, 2.0));
+    }
+    
+    if (activity_ == Activity::Eating) {
+        appearance.mouth_frame_index = static_cast<std::size_t>(std::fmod(animation_timer_ / 0.18, 2.0));
+    }
     
     if (activity_ == Activity::Walking || movement_.phase == MovementPhase::WallSquishPause) {
         appearance.cap_variant = (movement_.walk_frame_index == 0) ? CapVariant::Primary : CapVariant::Alternate;
@@ -312,7 +322,7 @@ std::string Buddy::mood_text() const {
 }
 
 void Buddy::update_needs(double dt_seconds) {
-    stats_.hunger += 0.05 * dt_seconds;
+    stats_.hunger += 0.1 * dt_seconds;
 
     if (activity_ == Activity::Sleeping) {
         stats_.energy += 6.0 * dt_seconds;
@@ -320,8 +330,8 @@ void Buddy::update_needs(double dt_seconds) {
         stats_.energy -= 0.2 * dt_seconds;
     }
 
-    if (stats_.hunger > 70.0) {
-        stats_.happiness -= 0.04 * dt_seconds;
+    if (stats_.hunger > 50.0) {
+        stats_.happiness -= 0.4 * dt_seconds;
     }
 }
 
