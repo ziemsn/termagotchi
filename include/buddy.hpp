@@ -46,6 +46,8 @@ enum class BodyPose {
     BreathingIn,
     BreathingOut,
     WallPause,
+    LookUp,
+    Settled,
     Turning
 };
 
@@ -120,6 +122,8 @@ struct AppearanceState {
     std::size_t walk_frame_index = 0;
     std::size_t sparkle_frame_index = 0;
     std::size_t blush_pulse_frame_index = 0;
+    std::size_t sleep_effect_frame_index = 0;
+    std::size_t comfort_frame_index = 0;
     std::size_t mouth_frame_index = 0;
 };
 
@@ -212,6 +216,10 @@ private:
     double random_blink_duration();
     double random_time_until_next_look();
     double random_look_duration();
+    double random_time_until_next_idle_look_up();
+    double random_idle_look_up_duration();
+    double random_time_until_next_posture_settle();
+    double random_posture_settle_duration();
     double random_eye_dart_duration();
     int random_idle_eye_dart_count();
     double random_time_until_next_wobble();
@@ -249,6 +257,10 @@ private:
    double comforting_timer_ = 0.0;
    double blink_duration_remaining_ = 0.0;
    double time_until_next_look_ = 0.0;
+   double time_until_next_idle_look_up_ = 0.0;
+   double idle_look_up_duration_remaining_ = 0.0;
+   double time_until_next_posture_settle_ = 0.0;
+   double posture_settle_duration_remaining_ = 0.0;
    double look_duration_remaining_ = 0.0;
    int idle_eye_dart_steps_remaining_ = 0.0;
    double time_until_next_wobble_ = 0.0;

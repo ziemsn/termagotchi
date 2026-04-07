@@ -84,8 +84,65 @@ struct SkySnapshot {
     std::vector<CloudSprite> clouds;
 };
 
+std::string cap_crown_display_text(char glyph) {
+    switch (glyph) {
+    case '-':
+        return u8"─";
+    case 'o':
+        return u8"○";
+    case 'O':
+        return u8"●";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
+std::string cap_brim_display_text(char glyph) {
+    switch (glyph) {
+    case '_':
+        return u8"─";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
+std::string body_display_text(char glyph) {
+    switch (glyph) {
+    case '|':
+        return u8"│";
+    case '_':
+        return u8"─";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
+std::string blush_display_text(char glyph) {
+    switch (glyph) {
+    case '.':
+        return u8"•";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
+std::string feet_display_text(char glyph) {
+    switch (glyph) {
+    case '/':
+        return u8"╱";
+    case '\\':
+        return u8"╲";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
 std::string effect_display_text(char glyph) {
     switch (glyph) {
+    case 'Z':
+        return u8"ᴢ";
+    case 'z':
+        return u8"ᶻ";
     case '*':
         return u8"✦";
     case '+':
@@ -144,9 +201,18 @@ std::string eyes_display_text(char glyph) {
 std::string display_text_for_cell(const SpriteCell& cell) {
     if (cell.role == SpriteLayerRole::Prop && cell.glyph == sun_prop_glyph()) return u8"☀";
     if (cell.role == SpriteLayerRole::Prop && cell.glyph == moon_prop_glyph()) return u8"☾";
-    if (cell.role == SpriteLayerRole::Eyes) return eyes_display_text(cell.glyph);
-    if (cell.role == SpriteLayerRole::Effect) return effect_display_text(cell.glyph);
-    return std::string(1, cell.glyph);
+    switch (cell.role) {
+    case SpriteLayerRole::CapCrown: return cap_crown_display_text(cell.glyph);
+    case SpriteLayerRole::CapBrim:  return cap_brim_display_text(cell.glyph);
+    case SpriteLayerRole::Eyes:     return eyes_display_text(cell.glyph);
+    case SpriteLayerRole::Blush:    return blush_display_text(cell.glyph);
+    case SpriteLayerRole::Body:     return body_display_text(cell.glyph);
+    case SpriteLayerRole::Feet:     return feet_display_text(cell.glyph);
+    case SpriteLayerRole::Effect:   return effect_display_text(cell.glyph);
+    case SpriteLayerRole::Prop:
+    case SpriteLayerRole::None:
+    default:                        return std::string(1, cell.glyph);
+    }
 }
 
 int cloud_width(const CloudSprite& cloud) {
