@@ -123,7 +123,12 @@ int body_row_count(const PoseState& pose) {
 }
 
 int sprite_height_for_pose(const PoseState& pose) {
-    return kBaseSpriteHeight + (is_sleep_pose(pose) ? 1 : 0);
+    int height = kBaseSpriteHeight + (is_sleep_pose(pose) ? 1 : 0);
+    if (pose.appearance.effect == Effect::Sparkle) {
+        height += 1;
+    }
+
+    return height;
 }
 
 int pose_vertical_offset_rows(const PoseState& pose) {
@@ -376,7 +381,7 @@ void draw_eyes(ComposedSprite& sprite, const EyePlacement& eyes) {
 }
 
 std::string mouth_text(const PoseState& pose) {
-    return (pose.appearance.mouth_frame_index % 2 == 0) ? "oo" : "ww";
+    return (pose.appearance.mouth_frame_index % 2 == 0) ? "Lr" : "lR";
 }
 
 int mouth_left_col(const PoseState& pose, int face_x) {
@@ -475,21 +480,29 @@ void draw_feet(ComposedSprite& sprite, const PoseState& pose, int row, int body_
 }
 
 void overlay_sparkle(ComposedSprite& sprite, const PoseState& pose, int crown_row, int crown_x) {
-    const int row = (crown_row > 0) ? (crown_row - 1) : crown_row;
-    const int sparkle_x = crown_x + 2;
+    if (crown_row < 2) {
+        return;
+    }
+
+    const int top_row = crown_row - 2;
+    const int bottom_row = crown_row - 1;
 
     switch (pose.appearance.sparkle_frame_index) {
     case 0:
-        overlay_part(sprite, row, sparkle_x, "* .", SpriteLayerRole::Effect);
+        put_sprite_cell(sprite, top_row, crown_x + 7, '+', SpriteLayerRole::Effect);
+        overlay_part(sprite, bottom_row, crown_x + 2, "* .", SpriteLayerRole::Effect);
         break;
     case 1:
-        overlay_part(sprite, row, sparkle_x - 2, ".   +", SpriteLayerRole::Effect);
+        put_sprite_cell(sprite, top_row, crown_x + 7, '*', SpriteLayerRole::Effect);
+        overlay_part(sprite, bottom_row, crown_x + 0, ".   +", SpriteLayerRole::Effect);
         break;
     case 2:
-        overlay_part(sprite, row, sparkle_x + 1, ".  *", SpriteLayerRole::Effect);
+        put_sprite_cell(sprite, top_row, crown_x + 1, '+', SpriteLayerRole::Effect);
+        overlay_part(sprite, bottom_row, crown_x + 3, ".  *", SpriteLayerRole::Effect);
         break;
     default:
-        overlay_part(sprite, row, sparkle_x + 1, "*", SpriteLayerRole::Effect);
+        put_sprite_cell(sprite, top_row, crown_x + 7, '*', SpriteLayerRole::Effect);
+        overlay_part(sprite, bottom_row, crown_x + 2, "+", SpriteLayerRole::Effect);
         break;
     }
 }

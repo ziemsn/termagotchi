@@ -84,6 +84,19 @@ struct SkySnapshot {
     std::vector<CloudSprite> clouds;
 };
 
+std::string effect_display_text(char glyph) {
+    switch (glyph) {
+    case '*':
+        return u8"✦";
+    case '+':
+        return u8"✧";
+    case '.':
+        return u8"·";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
 std::uint32_t mix_bits(std::uint32_t value) {
     value ^= value >> 16;
     value *= 0x7feb352du;
@@ -95,6 +108,45 @@ std::uint32_t mix_bits(std::uint32_t value) {
 
 double unit_random(std::uint32_t seed) {
     return static_cast<double>(mix_bits(seed) & 0x00ffffffu) / static_cast<double>(0x01000000u);
+}
+
+char sun_prop_glyph() {
+    return 'O';
+}
+
+char moon_prop_glyph() {
+    return 'C';
+}
+
+std::string eyes_display_text(char glyph) {
+    switch(glyph) {
+    case 'o':
+        return u8"◉";
+    case 'O':
+        return u8"◍";
+    case '-':
+        return u8"─";
+    case 'v':
+        return u8"⌄";
+    case 'L':
+        return u8"◜";
+    case 'R':
+        return u8"◝";
+    case 'l':
+        return u8"◟";
+    case 'r':
+        return u8"◞";
+    default:
+        return std::string(1, glyph);
+    }
+}
+
+std::string display_text_for_cell(const SpriteCell& cell) {
+    if (cell.role == SpriteLayerRole::Prop && cell.glyph == sun_prop_glyph()) return u8"☀";
+    if (cell.role == SpriteLayerRole::Prop && cell.glyph == moon_prop_glyph()) return u8"☾";
+    if (cell.role == SpriteLayerRole::Eyes) return eyes_display_text(cell.glyph);
+    if (cell.role == SpriteLayerRole::Effect) return effect_display_text(cell.glyph);
+    return std::string(1, cell.glyph);
 }
 
 int cloud_width(const CloudSprite& cloud) {
@@ -185,13 +237,41 @@ const char* state_accent_color(const BuddyRenderState& buddy) {
     return ansi::reset;
 }
 
+double star_visibility_for_hour(double hour) {
+    if (hour >= 18.0 && hour < 20.0) {
+        return (hour - 18.0) / 2.0;
+    }
+
+    if (hour >= 20.0 || hour < 4.0) {
+        return 1.0;
+    }
+
+    if (hour >= 4.0 && hour < 6.0) {
+        return (6.0 - hour) / 2.0;
+    }
+
+    return 0.0;
+}
+
+std::uint32_t nightly_star_field_seed(std::tm local_tm) {
+    if (local_tm.tm_hour < 6) {
+        local_tm.tm_mday -= 1;
+        std::mktime(&local_tm);
+    }
+
+    const std::uint32_t year = static_cast<std::uint32_t>(local_tm.tm_year + 1900);
+    const std::uint32_t yday = static_cast<std::uint32_t>(local_tm.tm_yday);
+
+    return mix_bits(0x6d2b79f5u ^ (year * 977u) ^ (yday * 1315423911u));
+}
+
 const char* sprite_cell_color(const BuddyRenderState& buddy, const SpriteCell& cell) {
     if (cell.glyph == ' ') {
         return ansi::reset;
     }
     if (cell.role == SpriteLayerRole::Prop) {
-        if (cell.glyph == 'O') return ansi::yellow;
-        if (cell.glyph == 'C') return ansi::cyan;
+        if (cell.glyph == sun_prop_glyph()) return ansi::yellow;
+        if (cell.glyph == moon_prop_glyph()) return ansi::cyan;
         if (cell.glyph == '*') return ansi::bright_white;
         if (cell.glyph == '+') return ansi::reset;
         if (cell.glyph == '.') return ansi::dim;
@@ -292,7 +372,7 @@ SkyProp current_sky_prop(double hour) {
     SkyProp prop;
     prop.col = kSkyMinCol + static_cast<int>(std::round(progress * (kSkyMaxCol - kSkyMinCol)));
     prop.row = kHorizonRow - static_cast<int>(std::round(arc_height * (kHorizonRow - kZenithRow)));
-    prop.glyph = daytime ? 'O' : 'C';
+    prop.glyph = daytime ? sun_prop_glyph() : moon_prop_glyph();
     prop.role = SpriteLayerRole::Prop;
     return prop;
 }
@@ -322,16 +402,36 @@ char twinkle_glyph(double phase) {
     return '+';
 }
 
-std::vector<StarPoint> current_stars(double seconds, const SkyProp& prop) {
+char attenuated_star_glyph(char glyph, double visibility) {
+    if (visibility <= 0.05) return ' ';
+
+    if (glyph == '*') {
+        if (visibility < 0.35) return '.';
+        if (visibility < 0.75) return '+';
+        return '*';
+    }
+
+    if (glyph == '+') {
+        return (visibility < 0.45) ? '.' : '+';
+    }
+
+    if (glyph == '.') {
+        return (visibility < 0.22) ? ' ' : '.';
+    }
+
+    return glyph;
+}
+
+std::vector<StarPoint> current_stars(double seconds, const SkyProp& prop, std::uint32_t field_seed, double visibility) {
     constexpr int kStarFieldMinRow = 0;
     constexpr int kStarFieldMaxRow = 4;
-    constexpr int kStarCandidateCount = 34;
+    constexpr int kStarCandidateCount = 40;
 
     std::vector<StarPoint> stars;
     stars.reserve(kStarCandidateCount);
 
     for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(kStarCandidateCount); ++i) {
-        const std::uint32_t base_seed = mix_bits(0x7a4d3c21u ^ (i * 2654435761u));
+        const std::uint32_t base_seed = mix_bits(field_seed ^ 0x7a4d3c21u ^ (i * 2654435761u));
         const int row = kStarFieldMinRow + static_cast<int>(mix_bits(base_seed ^ 0x13579bdfu) %
                 static_cast<std::uint32_t>(kStarFieldMaxRow - kStarFieldMinRow + 1));
         const int col = 1 + static_cast<int>(mix_bits(base_seed ^ 0x2468ace0u) %
@@ -344,7 +444,7 @@ std::vector<StarPoint> current_stars(double seconds, const SkyProp& prop) {
         const double twinkle_rate = 0.18 + 4.2 * unit_random(base_seed ^ 0xabcdef01u);
         const double phase_offset = unit_random(base_seed ^ 0x31415926u);
         const double phase = std::fmod(seconds * twinkle_rate + phase_offset, 1.0);
-        const char glyph = twinkle_glyph(phase);
+        const char glyph = attenuated_star_glyph(twinkle_glyph(phase), visibility);
 
         if (glyph == ' ') {
             continue;
@@ -414,7 +514,9 @@ SkySnapshot current_sky_snapshot() {
     sky.clouds = current_clouds(seconds, sky.daytime);
 
     if (!sky.daytime) {
-        sky.stars = current_stars(seconds, sky.prop);
+        const std::uint32_t field_seed = nightly_star_field_seed(local_tm);
+        const double visibility = star_visibility_for_hour(hour);
+        sky.stars = current_stars(seconds, sky.prop, field_seed, visibility);
     }
 
     return sky;
@@ -505,7 +607,7 @@ void framed_stage_row(const StageRow& row, const BuddyRenderState& buddy) {
             std::cout << next_color;
             active_color = next_color;
         }
-        std::cout << cell.glyph;
+        std::cout << display_text_for_cell(cell);
     }
 
     if (active_color != ansi::reset) {
